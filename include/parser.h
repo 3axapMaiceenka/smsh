@@ -3,27 +3,17 @@
 
 #include <stdlib.h>
 
-#define STRING_SIZE 256
+#define BUF_CAP 128
 
 enum TokenType
 {
 	NEWLINE,
 	WORD,
 	NAME,
-	ASSIGNMENT_WORD,
 	PARAMETER_EXPANSION,
-	ARITHMETIC_EXPANSION,
-	QUOTED_STR,
+	INPUT_REDIRECT,
+	OUTPUT_REDIRECT,
 	END
-};
-
-struct Token
-{
-	enum TokenType type;
-	struct Token* nodes;
-	struct Token* next;
-	size_t word_start;
-	size_t word_end;
 };
 
 struct Scanner
@@ -32,17 +22,38 @@ struct Scanner
 	size_t position;
 };
 
+struct Buffer
+{
+	char* buffer;
+	size_t capacity;
+	size_t size;
+};
+
+struct Token
+{
+	struct Buffer word;
+	enum TokenType type;
+};
+
+struct Error
+{
+	char* error_message;
+	int error; // 1 or 0
+};
+
 struct Parser
 {
 	struct Token current_token;
-	struct Scanner scanner;
+	struct Scanner* scanner;
+	struct Error* error;
 };
 
 enum AstNodeType
 {
 	AST_WORD,
 	AST_WORDLIST,
-	AST_SIMPLE_COMMAND
+	AST_SIMPLE_COMMAND,
+	AST_ASSIGNMENT
 };
 
 struct AstNode
@@ -61,44 +72,95 @@ struct AstWordlist
 	struct List* wordlist;
 };
 
+struct AstAssignment
+{
+	struct Token* variable; // variable->type == NAME
+	struct AstNode* expression; // AstWord or AstParamExpansion or AstArithmExpansion
+};
+
+struct AstAssignmentList
+{
+	struct List* assignments; // list contains AstAssigment structures or NULL
+};
+
+struct AstIORedirect
+{
+	struct Token* token; // token->type == INPUT_REDIRECT or token->type == OUTPUT_REDIRECT
+	struct AstWord* file_name;
+};
+
+struct CmdArgs
+{
+	struct AstWordlist* command_args;
+	struct AstIORedirect* input_redirect;
+	struct AstIORedirect* output_redirect;
+};
+
 struct AstSimpleCommand
 {
 	struct AstWord* command_name;
-	struct AstWordlist* args;
+	struct AstWordlist* command_args;
+	struct AstIORedirect* input_redirect;
+	struct AstIORedirect* output_redirect;
+	struct AstAssignmentList* assignment_list;
 };
 
-int eat(struct Parser* parser, enum TokenType expected);
-void copy_token(struct Token* dest, struct Token* src);
+/*
+io_redirect:   '<' filename
+			 | '>' filename
+*/
+struct AstIORedirect* io_redirect(struct Parser* parser);
+
+// filenme: WORD
+struct AstWord* filename(struct Parser* parser);
 
 /*
-cmd_suffix: WORD
+cmd_suffix:   io_redirect
+			| cmd_suffix io_redirect
+			| WORD
 			| cmd_suffix WORD
 */
-struct AstWordlist* cmd_suffix(struct Parser* parser);
+struct CmdArgs* cmd_suffix(struct Parser* parser);
 
 // cmd_name: WORD
 struct AstWord* cmd_name(struct Parser* parser);
 
+// cmd_prefix:   NAME'='WORD
+//             | cmd_prefix NAME'='WORD
+struct AstAssignmentList* cmd_prefix(struct Parser* parser);
+
 /*
-simple_command: cmd_name cmd_suffix
-				| cmd_name
+simple_command:   cmd_prefix cmd_name cmd_suffix
+				| cmd_prefix cmd_name
+				| cmd_prefix
+				|            cmd_name cmd_suffix
+				|            cmd_name
 */
 struct AstSimpleCommand* simple_command(struct Parser* parser);
 
 struct AstWord* ast_word(struct Parser* parser);
 
 struct AstSimpleCommand* parse(struct Parser* parser);
-char* expand_quoted_str(struct Token* token, const char* buffer);
-char* copy_memory(char* buffer, size_t* buf_size, size_t pos, const char* src, size_t src_size);
-char* expand_word(struct Token* token, const char* buffer);
-char* expand_token(struct Token* token, const char* buffer);
-void execute(struct AstSimpleCommand* command, const char* buffer);
-void destroy_token(struct Token* token);
-int quoted_string(struct Scanner* scanner, struct Token* parent, struct Token* token);
-int read_quoted_string(struct Scanner* scanner, struct Token* token);
-void emplace_token(struct Token* token, struct Token* node);
+void set_error(struct Error* error, const char* message);
+
+void free_ast_simple_command(void* ast_scommand); // ast_scommand is a pointer to struct AstSimpleCommand
+void free_ast_assignment_list(void* assignment_list); // assignment_list is a pointer to struct AstAssignmentList
+void free_ast_io_redirect(void* io_redir); // io_redir is a pointer to struct AstIORedirect
+void free_ast_word(void* word); // word is a pointer to struct AstWord
+void free_ast_wordlist(void* wordlist); // wordlist is a pointer to struct AstWordlist
+void free_ast_assignment(void* assignment); // assignment is a pointer to struct AstAssignment
+void free_ast_node(void* node); // node is a pointer to struct AstNode
+
+int eat(struct Parser* parser, enum TokenType expected);
+
+void init_buffer(struct Buffer* buffer);
+
+void append_char(struct Buffer* buffer, char c);
+
 struct Token get_next_token(struct Scanner* scanner);
-void initialize(struct Parser* parser, char* buffer);
+
+void copy_token(struct Token* dest, struct Token* src);
+
 int skip_delim(struct Scanner* scanner);
 
 #endif

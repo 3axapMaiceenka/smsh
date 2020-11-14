@@ -1,15 +1,7 @@
 #include "parser.h"
 #include "list.h"
-#include <stdlib.h>
+#include "utility.h"
 #include <stdio.h>
-#include <string.h>
-
-void initialize(struct Parser* parser, char* buffer)
-{
-	parser->scanner.buffer = buffer;
-	parser->scanner.position = 0;
-	parser->current_token = get_next_token(&parser->scanner);
-}
 
 int skip_delim(struct Scanner* scanner)
 {
@@ -21,199 +13,175 @@ int skip_delim(struct Scanner* scanner)
 	return scanner->buffer[scanner->position] != '\0';
 }
 
-int read_quoted_string(struct Scanner* scanner, struct Token* token)
-{
-	token->type = QUOTED_STR;
-	token->nodes = token->next = NULL;
-	token->word_start = scanner->position;
-
-	const char* buffer = scanner->buffer;
-	size_t position = scanner->position;
-
-	while (buffer[position] != 39 && buffer[position] != '\0')
-	{
-		position++;
-	}
-
-	if (buffer[position] == '\0') // syntax error
-	{
-		return -1;
-	}
-
-	int ret_val = (position != scanner->position); // returns 0 if single-quoted string is empty, else returns 1
-
-	scanner->position = position + 1;
-	token->word_end = position - 1;
-
-	return ret_val;
-}
-
-void emplace_token(struct Token* token, struct Token* node)
-{
-	struct Token* new_node = malloc(sizeof(struct Token));
-	new_node->nodes = node->nodes;
-	new_node->type = node->type;
-	new_node->word_end = node->word_end;
-	new_node->word_start = node->word_start;
-	new_node->next = NULL;
-
-	if (!token->nodes)
-	{
-		token->nodes = new_node;
-		return;
-	}
-
-	struct Token* temp = token->nodes;
-	for (; temp->next; temp = temp->next)
-		;
-
-	temp->next = new_node;
-}
-
-int quoted_string(struct Scanner* scanner, struct Token* parent, struct Token* token)
-{
-	int rc = read_quoted_string(scanner, token);
-
-	if (rc == 1 && parent)
-	{	
-		emplace_token(parent, token);
-	}
-	
-	return rc;
-}
-
-struct Token get_next_token(struct Scanner* scanner)
-{
-	struct Token token;
-	token.type = END;
-	token.nodes = token.next = NULL;
-
-	if (!skip_delim(scanner))
-	{
-		return token;
-	}
-
-	struct Token node;
-	const char* buffer = scanner->buffer;
-	size_t position = scanner->position;
-
-	if (buffer[position] == 39)
-	{
-		scanner->position++;
-
-		if (quoted_string(scanner, NULL, &node) == -1) // handle
-		{
-			return token;
-		}
-		
-		position = scanner->position;
-		char c = buffer[position];
-
-		if (c == ' ' || c == '\n' || c == '\t' || c == '\0')
-		{
-			return node;
-		}
-		else
-		{
-			token.word_start = node.word_start;
-			emplace_token(&token, &node);
-		}
-	}
-	else
-	{
-		token.word_start = position;
-	}
-	
-	token.type = WORD;
-
-	for (;;)
-	{
-		if (buffer[position++] == 39)
-		{
-			scanner->position = position;
-
-			if (quoted_string(scanner, &token, &node) == -1) // handle properly
-			{
-				fprintf(stderr, "No terminating quote\n");
-			}
-
-			position = scanner->position;
-		}
-
-		char c = buffer[position];
-		if (c == ' ' || c == '\n' || c == '\t' || c == '\0')
-		{
-			if (scanner->position == position) // if quote is the last symbol before c
-			{
-				token.word_end = position - 2;
-			}
-			else
-			{
-				token.word_end = position - 1;
-				scanner->position = position;
-			}
-
-			break;
-		}
-	}
-
-	return token;
-}
-
 int eat(struct Parser* parser, enum TokenType expected)
 {
 	if (parser->current_token.type == expected)
 	{
-		parser->current_token = get_next_token(&parser->scanner);
+		parser->current_token = get_next_token(parser->scanner);
 		return 1;
 	}
 
 	return 0;
 }
 
-void copy_token(struct Token* dest, struct Token* src)
-{
-	dest->nodes = src->nodes;
-	dest->type = src->type;
-	dest->word_end = src->word_end;
-	dest->word_start = src->word_start;
-	dest->next = src->next;
-}
-
 struct AstWord* ast_word(struct Parser* parser)
 {
-	struct AstWord* word = NULL;
-
-	if (parser->current_token.type == WORD || parser->current_token.type == QUOTED_STR)
-	{
-		word = malloc(sizeof(struct AstWord));
-		copy_token(&word->word, &parser->current_token);
-		eat(parser, parser->current_token.type);
-	}
-
-	return word;
-}
-
-/*
-cmd_suffix: WORD
-			| cmd_suffix WORD
-*/
-struct AstWordlist* cmd_suffix(struct Parser* parser)
-{
-	if (parser->current_token.type != WORD && parser->current_token.type != QUOTED_STR)
+	if (parser->current_token.type != WORD)
 	{
 		return NULL;
 	}
 
-	struct AstWordlist* ast_wordlist = calloc(1, sizeof(struct AstWordlist));
+	struct AstWord* word = malloc(sizeof(struct AstWord));
+	copy_token(&word->word, &parser->current_token);
+	eat(parser, WORD);
 
-	do 
+	return word;
+}
+
+// cmd_prefix:   NAME'='WORD
+//             | cmd_prefix NAME'='WORD
+struct AstAssignmentList* cmd_prefix(struct Parser* parser)
+{
+	if (parser->current_token.type != NAME)
 	{
-		struct AstWord* word = ast_word(parser);
-		push_back(&ast_wordlist->wordlist, word);
-	} while (parser->current_token.type == WORD || parser->current_token.type == QUOTED_STR);
+		return NULL;
+	}
 
-	return ast_wordlist;
+	struct AstAssignmentList* assignment_list = calloc(1, sizeof(struct AstAssignmentList));
+	assignment_list->assignments = create_list(free_ast_assignment);
+
+	struct AstAssignment* assignment = NULL;
+	struct Token token;
+
+	do
+	{
+		copy_token(&token, &parser->current_token);
+		eat(parser, NAME);
+
+		if (parser->current_token.type == WORD) // TODO: add parameter expamsion and arithmetic expanson tokens
+		{
+			assignment = calloc(1, sizeof(struct AstAssignment));
+			assignment->variable = malloc(sizeof(struct Token));
+			copy_token(assignment->variable, &token);
+
+			struct AstNode* node = malloc(sizeof(struct AstNode));
+			node->node_type = AST_WORD;
+			node->actual_data = ast_word(parser); // calls eat
+
+			assignment->expression = node;
+
+			push_back(assignment_list->assignments, assignment);
+		}
+		else
+		{
+			destroy_list(&assignment_list->assignments);
+			free(assignment_list);
+			set_error(parser->error, "Error: expected WORD token\n");			
+
+			return NULL;
+		}
+	} while (parser->current_token.type == NAME);
+
+	return assignment_list;
+}
+
+// filenme: WORD
+struct AstWord* filename(struct Parser* parser)
+{
+	return ast_word(parser);
+}
+
+/*
+io_redirect:   '<' filename
+			 | '>' filename
+*/
+struct AstIORedirect* io_redirect(struct Parser* parser)
+{
+	if (parser->current_token.type == INPUT_REDIRECT || parser->current_token.type == OUTPUT_REDIRECT)
+	{
+		struct Token* token = malloc(sizeof(struct Token));
+		copy_token(token, &parser->current_token);
+		eat(parser, parser->current_token.type);
+
+		struct AstWord* file_name = filename(parser);
+		if (!file_name) 
+		{
+			free(token);
+			set_error(parser->error, "Incomplete I/O redirection! Expected filename!\n");
+
+			return NULL;
+		}
+
+		struct AstIORedirect* io_redir = malloc(sizeof(struct AstIORedirect));
+		io_redir->file_name = file_name;
+		io_redir->token = token;
+
+		return io_redir;
+	}
+
+	return NULL;
+}
+
+/*
+cmd_suffix:   io_redirect
+			| cmd_suffix io_redirect
+			| WORD
+			| cmd_suffix WORD
+*/
+struct CmdArgs* cmd_suffix(struct Parser* parser)
+{
+	struct CmdArgs* cmd_args = calloc(1, sizeof(struct CmdArgs));
+
+	for (int running = 1; running; )
+	{
+		struct AstIORedirect* io_redir = io_redirect(parser);
+
+		if (io_redir)
+		{
+			if (io_redir->token->type == OUTPUT_REDIRECT)
+			{
+				free_ast_io_redirect(cmd_args->output_redirect);
+				cmd_args->output_redirect = io_redir;
+			}
+			else
+			{
+				free_ast_io_redirect(cmd_args->input_redirect);
+				cmd_args->input_redirect = io_redir;
+			}
+		}
+		else
+		{
+			if (parser->error->error)
+			{
+				return cmd_args;
+			}
+
+			struct AstWord* arg = ast_word(parser);
+
+			if (arg)
+			{
+				if (!cmd_args->command_args)
+				{
+					cmd_args->command_args = calloc(1, sizeof(struct AstWordlist));
+					cmd_args->command_args->wordlist = create_list(&free_ast_word);
+				}
+
+				push_back(cmd_args->command_args->wordlist, arg);
+			}
+			else
+			{
+				running = 0;
+			}
+		}
+	}
+
+	if (!cmd_args->input_redirect && !cmd_args->output_redirect && !cmd_args->command_args)
+	{
+		free(cmd_args);
+		return NULL;
+	}
+
+	return cmd_args;
 }
 
 // cmd_name: WORD
@@ -223,22 +191,56 @@ struct AstWord* cmd_name(struct Parser* parser)
 }
 
 /*
-simple_command: cmd_name cmd_suffix
+simple_command:   cmd_prefix cmd_name cmd_suffix
+				| cmd_prefix cmd_name
+				| cmd_prefix
+				| cmd_name cmd_suffix
 				| cmd_name
 */
 struct AstSimpleCommand* simple_command(struct Parser* parser)
 {
 	struct AstSimpleCommand* ast_scommand = NULL;
 
-	struct AstWord* name = cmd_name(parser);
-	if (!name)
+	struct AstAssignmentList* assignment_list = cmd_prefix(parser);
+	if (assignment_list)
 	{
-		return NULL;
+		ast_scommand = calloc(1, sizeof(struct AstSimpleCommand));
+		ast_scommand->assignment_list = assignment_list;
+	}
+	else
+	{
+		if (parser->error->error)
+		{
+			return NULL;
+		}
 	}
 
-	ast_scommand = malloc(sizeof(struct AstSimpleCommand));
-	ast_scommand->command_name = name;
-	ast_scommand->args = cmd_suffix(parser);
+	struct AstWord* command_name = cmd_name(parser);
+	if (command_name)
+	{
+		if (!ast_scommand)
+		{
+			ast_scommand = calloc(1, sizeof(struct AstSimpleCommand));
+		}
+
+		ast_scommand->command_name = command_name;
+	}
+	else
+	{
+		if (!ast_scommand) return NULL;
+	}
+
+	if (ast_scommand->command_name)
+	{
+		struct CmdArgs* cmd_args = cmd_suffix(parser);
+
+		if (cmd_args)
+		{
+			ast_scommand->command_args = cmd_args->command_args;
+			ast_scommand->input_redirect = cmd_args->input_redirect;
+			ast_scommand->output_redirect = cmd_args->output_redirect;
+		}
+	}
 
 	return ast_scommand;
 }
@@ -253,161 +255,197 @@ struct AstSimpleCommand* parse(struct Parser* parser)
 	return simple_command(parser);
 }
 
-char* expand_quoted_str(struct Token* token, const char* buffer)
+void init_buffer(struct Buffer* buffer)
 {
-	size_t size = sizeof(char) * (token->word_end - token->word_start + 2);
-	char* expanded = malloc(size);
-	memcpy(expanded, buffer + token->word_start, size - 1);
-	expanded[size - 1] = '\0';
-
-	return expanded;
+	buffer->size = 0;
+	buffer->capacity = BUF_CAP;
+	buffer->buffer = (char*)malloc(BUF_CAP);
 }
 
-char* copy_memory(char* buffer, size_t* buf_size, size_t pos, const char* src, size_t src_size)
+void append_char(struct Buffer* buffer, char c)
 {
-	if (*buf_size - pos < src_size)
+	if (buffer->size >= buffer->capacity)
 	{
-		*buf_size = pos + src_size;
-		buffer = realloc(buffer, *buf_size);
+		buffer->capacity <<= 1;
+		buffer->buffer = (char*)realloc(buffer->buffer, buffer->capacity);
 	}
 
-	memcpy(buffer + pos, src, src_size);
-
-	return buffer;
+	buffer->buffer[buffer->size++] = c;
 }
 
-char* expand_word(struct Token* token, const char* buffer)
+struct Token get_next_token(struct Scanner* scanner)
 {
-	size_t buf_size = STRING_SIZE;
-	size_t src_size = 0, curr_size = 0;;
-	char* expanded = malloc(STRING_SIZE);
+	struct Token token;
+	token.type = END;
 
-	if (token->nodes)
+	if (!skip_delim(scanner))
 	{
-		size_t prev_end = token->word_start;
+		return token;
+	}
 
-		if (token->word_start < token->nodes->word_start)
-		{
-			src_size = token->nodes->word_start - token->word_start - 1; // quote 
-			expanded = copy_memory(expanded, &buf_size, 0, buffer + token->word_start, src_size);
-			curr_size = src_size;
-			prev_end = src_size;
-		}
+	token.type = WORD;
+	init_buffer(&token.word);
 
-		struct Token* t = token->nodes;
-		for (;; t = t->next)
+	const char* buffer = scanner->buffer;
+	size_t position = scanner->position;
+	int contains_quotes = 0;
+
+	for (int running = 1; running; )
+	{
+		char c = buffer[position++];
+
+		if (c == 39 || c == 34) // single or double quote
 		{
-			if (t->word_start > prev_end + 1)
+			while (buffer[position] != c && buffer[position] != '\0')
 			{
-				src_size = t->word_start - prev_end - 3;
-				expanded = copy_memory(expanded, &buf_size, curr_size, buffer + prev_end + 2, src_size);
-				curr_size += src_size;
+				append_char(&token.word, buffer[position++]);
 			}
 
-			if (t->type == QUOTED_STR)
+			if (buffer[position] == '\0')
 			{
-				char* substr = expand_quoted_str(t, buffer);
-				src_size = t->word_end - t->word_start + 1;
-				expanded = copy_memory(expanded, &buf_size, curr_size, substr, src_size);
-				curr_size += src_size;
-				prev_end = t->word_end;
+				free(token.word.buffer);
+				return token;
 			}
 
-			if (!t->next)
-			{
-				break;
-			}
+			contains_quotes = 1;
+			position++;
 		}
-
-		if (token->word_end != t->word_end)
+		else
 		{
-			src_size = token->word_end - t->word_end - 1;
-			expanded = copy_memory(expanded, &buf_size, curr_size, buffer + t->word_end + 2, src_size);
-			curr_size += src_size;
+			if (c == '=' && !contains_quotes && token.word.size && buffer[position] != ' ' && buffer[position] != '\n' && buffer[position] != '\0' && buffer[position] != '\t')
+			{
+				token.type = NAME;
+				running = 0;
+			}
+			else
+			{
+				append_char(&token.word, c);
+			}
+		}
+
+		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '\0')
+		{
+			break;
 		}
 	}
-	else
-	{
-		src_size = token->word_end - token->word_start + 1;
-		expanded = copy_memory(expanded, &buf_size, 0, buffer + token->word_start, src_size);
-		curr_size += src_size;
-	}
 
-	expanded = realloc(expanded, curr_size + 1);
-	expanded[curr_size] = '\0';
+	append_char(&token.word, '\0');
+	scanner->position = position;
 
-	return expanded;
+	return token;
 }
 
-char* expand_token(struct Token* token, const char* buffer)
+void set_error(struct Error* error, const char* message)
 {
-	switch (token->type)
-	{
-		case QUOTED_STR:
-		{
-			return expand_quoted_str(token, buffer);
-		}
-		case WORD:
-		{
-			return expand_word(token, buffer);
-		}
-		// TODO: add arithmetic expansion and parameter expansion
-		default:
-		{
-			return NULL;
-		}
-	}
+	error->error_message = copy_string(message);
+	error->error = 1;
 }
 
-void execute(struct AstSimpleCommand* command, const char* buffer)
+void copy_token(struct Token* dest, struct Token* src)
 {
-	if (command)
+	dest->type = src->type;
+	dest->word.buffer = src->word.buffer;
+	dest->word.capacity = src->word.capacity;
+	dest->word.size = src->word.size;
+}
+
+void free_ast_simple_command(void* ast_scommand)
+{
+	if (ast_scommand)
 	{
-		if (command->command_name)
-		{
-			char* name = expand_token(&command->command_name->word, buffer);
-
-			fprintf(stdout, "Command name: %s\n", name);
-
-			destroy_token(&command->command_name->word);
-			free(command->command_name);
-			free(name);
-		}
-
-		if (command->args)
-		{
-			for (struct List* arg = command->args->wordlist; arg; arg = arg->next)
-			{
-				struct AstWord* comm_arg = (struct AstWord*)arg->data;
-				char* args = expand_token(&comm_arg->word, buffer);
-
-				fprintf(stdout, "Arguments: %s\n", args);
-
-				free(args);
-				destroy_token(&comm_arg->word);
-			}
-
-			destroy_list(&command->args->wordlist);
-			free(command->args);
-		}
-
-		free(command);
-
-		fprintf(stdout, "\n");
+		struct AstSimpleCommand* ast_command = (struct AstSimpleCommand*)ast_scommand;
+		free_ast_assignment_list(ast_command->assignment_list);
+		free_ast_io_redirect(ast_command->input_redirect);
+		free_ast_io_redirect(ast_command->output_redirect);
+		free_ast_wordlist(ast_command->command_args);
+		free_ast_word(ast_command->command_name);
+		free(ast_command);
 	}
 }
 
-void destroy_token(struct Token* token)
+void free_ast_assignment_list(void* assignment_list)
 {
-	if (token->nodes)
+	if (assignment_list)
 	{
-		destroy_token(token->nodes);
-		free(token->nodes);
+		struct AstAssignmentList* list = (struct AstAssignmentList*)assignment_list;
+		destroy_list(&list->assignments);
+		free(list);
 	}
+}
 
-	if (token->next)
+void free_ast_assignment(void* assignment)
+{
+	if (assignment)
 	{
-		destroy_token(token->next);
-		free(token->next);
+		struct AstAssignment* ast_assignment = (struct AstAssignment*)assignment;
+		free_ast_node(ast_assignment->expression);
+		free(ast_assignment->variable->word.buffer);
+		free(ast_assignment->variable);
+		free(ast_assignment);
+	}
+}
+
+void free_ast_node(void* node)
+{
+	if (node)
+	{
+		struct AstNode* n = (struct AstNode*)node;
+
+		switch (n->node_type)
+		{
+			case AST_WORD:
+			{
+				free_ast_word(n->actual_data);
+			} break;
+			case AST_WORDLIST:
+			{
+				free_ast_wordlist(n->actual_data);
+			} break;
+			case AST_SIMPLE_COMMAND:
+			{
+				free_ast_simple_command(n->actual_data);
+			} break;
+			case AST_ASSIGNMENT:
+			{
+				free_ast_assignment(n->actual_data);
+			} break;
+			default:
+			{
+				free(n->actual_data);
+			} break;
+		}
+
+		free(n);
+	}
+}
+
+void free_ast_io_redirect(void* io_redir)
+{
+	if (io_redir)
+	{
+		struct AstIORedirect* redir = (struct AstIORedirect*)io_redir;
+		free_ast_word(redir->file_name);
+		free(redir->token);
+		free(redir);
+	}
+}
+
+void free_ast_word(void* word)
+{
+	if (word)
+	{
+		struct AstWord* w = (struct AstWord*)word;
+		free(w->word.word.buffer);
+		free(w);
+	}
+}
+
+void free_ast_wordlist(void* wordlist)
+{
+	if (wordlist)
+	{
+		struct AstWordlist* list = (struct AstWordlist*)wordlist;
+		destroy_list(&list->wordlist);
+		free(list);
 	}
 }
