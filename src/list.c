@@ -1,19 +1,27 @@
 #include "list.h"
 #include <stdlib.h>
 
-struct List* push_back(struct List** root, void* data)
+struct List* create_list(void (*free_data)(void*))
 {
-	struct List* last = malloc(sizeof(struct List));
+	struct List* list = calloc(1, sizeof(struct List));
+	list->free_data = free_data;
+
+	return list;
+}
+
+struct Node* push_back(struct List* list, void* data)
+{
+	struct Node* last = malloc(sizeof(struct Node));
 	last->data = data;
 	last->next = NULL;
 
-	if (!*root)
+	if (!list->root)
 	{
-		*root = last;
+		list->root = last;
 		return last;
 	}
 
-	struct List* temp = *root;
+	struct Node* temp = list->root;
 	for (; temp->next; temp = temp->next)
 		;
 
@@ -22,22 +30,26 @@ struct List* push_back(struct List** root, void* data)
 	return last;
 }
 
-void destroy_list(struct List** root)
+void destroy_list(struct List** list)
+{
+	if (*list)
+	{
+		free_elements(&(*list)->root, (*list)->free_data);
+		free(*list);
+		*list = NULL;
+	}
+}
+
+void free_elements(struct Node** root, void (*free_data)(void*))
 {
 	if (*root)
 	{
 		if ((*root)->next)
 		{
-			destroy_list(&(*root)->next);
+			free_elements(&(*root)->next, free_data);
 			free((*root)->next);
 		}
 
-		if ((*root)->data)
-		{
-			free((*root)->data);
-		}
-
-		free(*root);
-		*root = NULL;
+		free_data((*root)->data);
 	}
 }
