@@ -38,7 +38,7 @@ void initialize(struct Shell* shell, char* buffer)
 {
 	shell->scanner->buffer = buffer;
 	shell->scanner->position = 0;
-	shell->parser->current_token = get_next_token(shell->scanner);
+	shell->parser->current_token = get_next_token(shell->scanner, &shell->parser->parsing_arithm_expr);
 }
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value)
@@ -86,6 +86,53 @@ static const char* expand_token(struct Shell* shell, struct Token* token)
 	}
 }
 
+int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
+{
+	//TODO: add parameter expansion execution
+	switch (arithm_expr->token.type)
+	{
+		case INTEGER:
+		{
+			return atoi(arithm_expr->token.word.buffer);
+		} break;
+		case MULTIPLY:
+		{
+			return execute_arithm_expr(shell, arithm_expr->left) * execute_arithm_expr(shell, arithm_expr->right);
+		} break;
+		case DIVIDE:
+		{
+			return execute_arithm_expr(shell, arithm_expr->left) / execute_arithm_expr(shell, arithm_expr->right);
+		} break;
+		case PLUS:
+		{
+			if (arithm_expr->right)
+			{
+				return execute_arithm_expr(shell, arithm_expr->left) + execute_arithm_expr(shell, arithm_expr->right);
+			}
+			else
+			{
+				return execute_arithm_expr(shell ,arithm_expr->left);
+			}
+		} break;
+		case MINUS:
+		{
+			if (arithm_expr->right)
+			{
+				return execute_arithm_expr(shell, arithm_expr->left) - execute_arithm_expr(shell, arithm_expr->right);
+			}
+			else
+			{
+				return -execute_arithm_expr(shell, arithm_expr->left);
+			}
+		} break;
+		default:
+		{
+			//TODO: handle properly
+			return 0;
+		} break;
+	}
+}
+
 void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* buffer)
 {
 	if (shell->parser->error->error)
@@ -110,6 +157,7 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 
 				struct AstNode* expr = a->expression;
 				struct AstWord* word = NULL;
+				struct AstArithmExpr* arithm_expr = NULL;
 
 				switch (expr->node_type)
 				{
@@ -141,6 +189,14 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 							default: break;
 						}
 					} break;
+					case AST_ARITHM_EXPR:
+					{
+						char str[12];
+						arithm_expr = expr->actual_data;
+						sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+						set_variable(shell, a->variable->word.buffer, str);
+						printf("Expression(Arithmetic expansion): %s\n", str);
+					} break;
 
 					default: printf("error\n"); break;
 				}
@@ -158,8 +214,18 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 
 			for (struct Node* argument = command->command_args->wordlist->head; argument; argument = argument->next)
 			{
-				struct AstWord* word = (struct AstWord*)(argument->data);
-				printf("%s\n", expand_token(shell, &word->word));
+				struct AstNode* node = (struct AstNode*)(argument->data);
+
+				if (node->node_type == AST_WORD)
+				{
+					struct AstWord* arg = node->actual_data;
+					printf("(WORD) %s\n", expand_token(shell, &arg->word));
+				}
+				else
+				{
+					struct AstArithmExpr* arithm_expr = node->actual_data;
+					printf("(Arithmetic expansion) %d\n", execute_arithm_expr(shell, arithm_expr));
+				}
 			}
 		}
 
@@ -173,8 +239,8 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 			printf("Output redirection to: %s\n", expand_token(shell, &command->output_redirect->file_name->word));
 		}
 
-		printf("\n");
-
 		free_ast_simple_command(command);
 	}
+
+	printf("\n");
 }

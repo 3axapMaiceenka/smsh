@@ -50,9 +50,9 @@ int main()
 	//_test_("'shdj'3829'ajij'39203902'sdsdksd'jskdjsld'2903902'					'323213'321321312'3213213123''12313'");
 
 	/*Tests2*/
-	_test_("exec 123 1234 12345 123456");
-	_test_("'1231' '3434' 434'4343243'  4'3432'43'24324' '3243242'");
-	_test_("'3232' '1' '2' 3 4 '5'");
+	//_test_("exec 123 1234 12345 123456");
+	//_test_("'1231' '3434' 434'4343243'  4'3432'43'24324' '3243242'");
+	//_test_("'3232' '1' '2' 3 4 '5'");
 
 	/*Tests3*/
 	//_test_("=");
@@ -79,20 +79,29 @@ int main()
 	//_test_("command > '>'.txt");
 
 	/*Test5*/
-	_test_("$");
-	_test_("$variable");
-	_test_("var1=4 var2=$var1");
-	_test_("cmd_name=echo $cmd_name");
-	_test_("cmd_name=echo $cmd_name test");
-	_test_("cmd_name=echo arg1=test arg2=$test $cmd_name $arg1 $arg2");
-	_test_("var=3 echo '$var'");
-	_test_("var=abcd 'cmd_name'$var");
-	_test_("var=abcd var2=poiu cmd_name $var$var2");
-	_test_("input=input.txt output=output.txt cmd_name=command arg=argument $cmd_name >$output $arg < $input");
-	_test_("input=input.txt output=output.txt cmd_name=command arg=argument '$cmd_name' >$'output' $'arg' < $'input'");
-	_test_("$37847384$");
-	_test_("echo $");
-	_test_("$$$$$$");
+	//_test_("$");
+	//_test_("$variable");
+	//_test_("var1=4 var2=$var1");
+	//_test_("cmd_name=echo $cmd_name");
+	//_test_("cmd_name=echo $cmd_name test");
+	//_test_("cmd_name=echo arg1=test arg2=$test $cmd_name $arg1 $arg2");
+	//_test_("var=3 echo '$var'");
+	//_test_("var=abcd 'cmd_name'$var");
+	//_test_("var=abcd var2=poiu cmd_name $var$var2");
+	//_test_("input=input.txt output=output.txt cmd_name=command arg=argument $cmd_name >$output $arg < $input");
+	//_test_("input=input.txt output=output.txt cmd_name=command arg=argument '$cmd_name' >$'output' $'arg' < $'input'");
+	//_test_("$37847384$");
+	//_test_("echo $");
+	//_test_("$$$$$$");
+
+	/*Test6*/
+	_test_("var=5 $((3+2))");
+	_test_("$((1+1))");
+	_test_("cmd_name $((4+2))");
+	_test_("cmd_name $((2*1 / (2))) $((1 + 2 + 3 - 4 )) ");
+	_test_("var=$((5+6)) cmd_name $var $((2*1-3))");
+	_test_("var=$((3 - 2 +--+12 / (4 * 2 - (4 / 2)) * 10 + (((-(1))))))");
+	_test_("var=$((4/2 -     1   + (-6 / +- 5))) cmd_name $((3- 2+ 1- (-(-(-(4)))) * 3 / 2))");
 
 	return 0;
 }

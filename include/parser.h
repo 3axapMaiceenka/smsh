@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 
-#define BUF_CAP 128
+#define BUF_CAP 32
 
 enum TokenType
 {
@@ -13,6 +13,17 @@ enum TokenType
 	PARAMETER_EXPANSION,
 	INPUT_REDIRECT,
 	OUTPUT_REDIRECT,
+	
+	/*those are used while reading arithmetic expression*/
+	INTEGER,
+	PLUS,
+	MINUS,
+	MULTIPLY,
+	DIVIDE,
+	LPAR,
+	RPAR,
+	/****************************************************/
+
 	END
 };
 
@@ -46,6 +57,7 @@ struct Parser
 	struct Token current_token;
 	struct Scanner* scanner;
 	struct Error* error;
+	int parsing_arithm_expr;
 };
 
 enum AstNodeType
@@ -53,7 +65,8 @@ enum AstNodeType
 	AST_WORD,
 	AST_WORDLIST,
 	AST_SIMPLE_COMMAND,
-	AST_ASSIGNMENT
+	AST_ASSIGNMENT,
+	AST_ARITHM_EXPR
 };
 
 struct AstNode
@@ -69,13 +82,13 @@ struct AstWord
 
 struct AstWordlist
 {
-	struct List* wordlist; // list contains AstWord structures or NULL
+	struct List* wordlist; // list contains AstNode structures or NULL
 };
 
 struct AstAssignment
 {
 	struct Token* variable; // variable->type == NAME
-	struct AstNode* expression; // expresision->node_type is AstWord or AstArithmExpansion
+	struct AstNode* expression; // expresision->node_type is AST_WORD or AST_ARITHM_EXPR
 };
 
 struct AstAssignmentList
@@ -105,6 +118,13 @@ struct AstSimpleCommand
 	struct AstAssignmentList* assignment_list;
 };
 
+struct AstArithmExpr
+{
+	struct Token token;
+	struct AstArithmExpr* left;
+	struct AstArithmExpr* right;
+};
+
 /*
 io_redirect:   '<' filename
 			 | '>' filename
@@ -118,10 +138,12 @@ struct AstWord* filename(struct Parser* parser);
 /*
 cmd_suffix:				 io_redirect
 			| cmd_suffix io_redirect
-			| WORD
-			| PARAMETER_EXPANSION
+			|			 WORD
+			|			 PARAMETER_EXPANSION
+			|			 arithm_expression
 			| cmd_suffix WORD
 			| cmd_suffix PARAMETER_EXPANSION
+			| cmd_suffix arithm_expression
 */
 struct CmdArgs* cmd_suffix(struct Parser* parser);
 
@@ -130,11 +152,13 @@ struct CmdArgs* cmd_suffix(struct Parser* parser);
 struct AstWord* cmd_name(struct Parser* parser);
 
 /*
-cmd_prefix:    NAME'='WORD
-			 | NAME'='PARAMETER_EXPANSION
-             | cmd_prefix NAME'='WORD
+cmd_prefix:				  NAME'='WORD
+			 |			  NAME'='PARAMETER_EXPANSION
+			 |			  NAME'='arithm_expression
+			 | cmd_prefix NAME'='WORD
 			 | cmd_prefix NAME'='PARAMETER_EXPANSION
-*/			    
+			 | cmd_prefix NAME'='arithm_expression
+*/
 struct AstAssignmentList* cmd_prefix(struct Parser* parser);
 
 /*
@@ -146,19 +170,41 @@ simple_command:   cmd_prefix cmd_name cmd_suffix
 */
 struct AstSimpleCommand* simple_command(struct Parser* parser);
 
+/*
+arithm_expression:   arithm_term
+			       | arithm_term (PLUS  arithm_term)*
+			       | arithm_term (MINUS arithm_term)*
+*/
+struct AstArithmExpr* arithm_expression(struct Parser* parser);
+
+/*
+arithm_term:   arithm_factor
+			 | arithm_factor (MULTIPLY arithm_factor)*
+			 | arithm_factor (DIVIDE   arithm_factor)*
+*/
+struct AstArithmExpr* arithm_term(struct Parser* parser);
+
+/*
+arithm_factor:    INTEGER
+				| LPAR arithm_expression RPAR
+				| PLUS  arithm_factor
+				| MINUS arithm_factor
+*/
+struct AstArithmExpr* arithm_factor(struct Parser* parser);
+
 struct AstWord* ast_word(struct Parser* parser);
+
+// returns result of arithm_expression and calls get_next_token()
+struct AstNode* parse_arithm_expr(struct Parser* parser);
 
 /*
 pipeline:                         simple_command
 	     | pipeline '|' linebreak simple_command
-
 struct AstPipeline* pipeline(struct Parser* parser);
 
 linebreak: newline_list
 	        | 'empty'
-
 int linebreak(struct Parser* parser);
-
 
 	newline_list :              NEWLINE
 	             | newline_list NEWLINE
@@ -175,17 +221,26 @@ void free_ast_word(void* word); // word is a pointer to struct AstWord
 void free_ast_wordlist(void* wordlist); // wordlist is a pointer to struct AstWordlist
 void free_ast_assignment(void* assignment); // assignment is a pointer to struct AstAssignment
 void free_ast_node(void* node); // node is a pointer to struct AstNode
+void free_ast_arithm_expr(void* arithm_expr); // arithm_expr is a pointer to struct AStArithmExpr
 
-int eat(struct Parser* parser, enum TokenType expected);
+// get_token function is get_next_token or arithm_get_next_token
+int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*));
+
+/*scanner part*/
 
 void init_buffer(struct Buffer* buffer);
 
 void append_char(struct Buffer* buffer, char c);
 
-/*scanner part*/
+struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning);
 
-struct Token get_next_token(struct Scanner* scanner);
+/*while parsing arithmetic expansion, those functions are used*/
 
+struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end);
+
+int arithm_read_integer(struct Scanner* scanner, struct Token* token);
+
+/***********************************************************************************/
 void copy_token(struct Token* dest, struct Token* src);
 
 int skip_delim(struct Scanner* scanner);

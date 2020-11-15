@@ -5,7 +5,7 @@
 
 int skip_delim(struct Scanner* scanner)
 {
-	while (scanner->buffer[scanner->position] == ' ' || scanner->buffer[scanner->position] == '\n' || scanner->buffer[scanner->position] == '\t')
+	while (scanner->buffer[scanner->position] == ' ' || scanner->buffer[scanner->position] == '\t')
 	{
 		scanner->position++;
 	}
@@ -13,11 +13,13 @@ int skip_delim(struct Scanner* scanner)
 	return scanner->buffer[scanner->position] != '\0';
 }
 
-int eat(struct Parser* parser, enum TokenType expected)
+// get_token(...) function is get_next_token(...) or arithm_get_next_token(...) (if parser->parsing_arithm_expr == 1)
+int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*))
 {
 	if (parser->current_token.type == expected)
 	{
-		parser->current_token = get_next_token(parser->scanner);
+		// scanner sets parser->parsing_arithm_expr variable to 1, if encounter '$((' sequence 
+		parser->current_token = get_token(parser->scanner, &parser->parsing_arithm_expr); 
 		return 1;
 	}
 
@@ -33,16 +35,18 @@ struct AstWord* ast_word(struct Parser* parser)
 
 	struct AstWord* word = malloc(sizeof(struct AstWord));
 	copy_token(&word->word, &parser->current_token);
-	eat(parser, word->word.type);
+	eat(parser, word->word.type, get_next_token);
 
 	return word;
 }
 
 /*
-cmd_prefix:    NAME'='WORD
-			 | NAME'='PARAMETER_EXPANSION
+cmd_prefix:				  NAME'='WORD
+			 |			  NAME'='PARAMETER_EXPANSION
+			 |			  NAME'='arithm_expression
 			 | cmd_prefix NAME'='WORD
 			 | cmd_prefix NAME'='PARAMETER_EXPANSION
+			 | cmd_prefix NAME'='arithm_expression
 */
 struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 {
@@ -60,20 +64,30 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 	do
 	{
 		copy_token(&token, &parser->current_token);
-		eat(parser, NAME);
+		eat(parser, NAME, get_next_token);
 
-		if (parser->current_token.type == WORD || parser->current_token.type == PARAMETER_EXPANSION) // TODO: add arithmetic expansion token
+		struct AstNode* node = NULL;
+
+		if (parser->parsing_arithm_expr)
+		{
+			node = parse_arithm_expr(parser); // parse_arithm_expr() returns result of arithm_expression() and calls get_next_token()
+		}
+		else
+		{
+			if (parser->current_token.type == WORD || parser->current_token.type == PARAMETER_EXPANSION)
+			{
+				node = malloc(sizeof(struct AstNode));
+				node->node_type = AST_WORD;
+				node->actual_data = ast_word(parser); // calls eat()
+			}
+		}
+
+		if (node)
 		{
 			assignment = calloc(1, sizeof(struct AstAssignment));
 			assignment->variable = malloc(sizeof(struct Token));
 			copy_token(assignment->variable, &token);
-
-			struct AstNode* node = malloc(sizeof(struct AstNode));
-			node->node_type = AST_WORD;
-			node->actual_data = ast_word(parser); // calls eat
-
 			assignment->expression = node;
-
 			push_back(assignment_list->assignments, assignment);
 		}
 		else
@@ -81,7 +95,6 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 			destroy_list(&assignment_list->assignments);
 			free(assignment_list);
 			set_error(parser->error, "Syntax error: invalid assignment statement\n");			
-
 			return NULL;
 		}
 	} while (parser->current_token.type == NAME);
@@ -89,7 +102,8 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 	return assignment_list;
 }
 
-// filenme: WORD
+// filenme:   WORD
+//		    | PARAMETER_EXPANSION
 struct AstWord* filename(struct Parser* parser)
 {
 	return ast_word(parser);
@@ -105,14 +119,13 @@ struct AstIORedirect* io_redirect(struct Parser* parser)
 	{
 		struct Token* token = malloc(sizeof(struct Token));
 		copy_token(token, &parser->current_token);
-		eat(parser, parser->current_token.type);
+		eat(parser, parser->current_token.type, get_next_token);
 
 		struct AstWord* file_name = filename(parser);
 		if (!file_name) 
 		{
 			free(token);
 			set_error(parser->error, "Syntax error: incomplete I/O redirection! Expected filename!\n");
-
 			return NULL;
 		}
 
@@ -126,13 +139,48 @@ struct AstIORedirect* io_redirect(struct Parser* parser)
 	return NULL;
 }
 
+static int finish_reading_arithm_expr(struct Scanner* scanner)
+{
+	if (scanner->buffer[scanner->position] == ')')
+	{
+		scanner->position++;
+		return 1;
+	}
+
+	return 0;
+}
+
+// returns result of arithm_expression
+struct AstNode* parse_arithm_expr(struct Parser* parser)
+{
+	parser->current_token = arithm_get_next_token(parser->scanner, &parser->parsing_arithm_expr);
+
+	struct AstArithmExpr* arithm_expr = arithm_expression(parser);
+	if (!arithm_expr || !finish_reading_arithm_expr(parser->scanner))
+	{
+		set_error(parser->error, "Syntax error: invalid arithmetic expression!");
+		return NULL;
+	}
+
+	struct AstNode* node = malloc(sizeof(struct AstNode));
+	node->actual_data = arithm_expr;
+	node->node_type = AST_ARITHM_EXPR;
+
+	parser->parsing_arithm_expr = 0;
+	parser->current_token = get_next_token(parser->scanner, &parser->parsing_arithm_expr);
+
+	return node;
+}
+
 /*
 cmd_suffix:				 io_redirect
 			| cmd_suffix io_redirect
-			| WORD
-			| PARAMETER_EXPANSION
+			|			 WORD
+			|			 PARAMETER_EXPANSION
+			|			 arithm_expression
 			| cmd_suffix WORD
 			| cmd_suffix PARAMETER_EXPANSION
+			| cmd_suffix arithm_expression
 */
 struct CmdArgs* cmd_suffix(struct Parser* parser)
 {
@@ -162,17 +210,36 @@ struct CmdArgs* cmd_suffix(struct Parser* parser)
 				return cmd_args;
 			}
 
-			struct AstWord* arg = ast_word(parser);
+			struct AstNode* node = NULL;
 
-			if (arg)
+			if (parser->parsing_arithm_expr)
+			{
+				if (!(node = parse_arithm_expr(parser))) // parse_arithm_expr() returns result of arithm_expression() and calls get_next_token()
+				{
+					return cmd_args;
+				}
+			}
+			else
+			{
+				struct AstWord* arg = ast_word(parser);
+
+				if (arg)
+				{
+					node = malloc(sizeof(struct AstNode));
+					node->actual_data = arg;
+					node->node_type = AST_WORD;
+				}				
+			}
+
+			if (node)
 			{
 				if (!cmd_args->command_args)
 				{
 					cmd_args->command_args = calloc(1, sizeof(struct AstWordlist));
-					cmd_args->command_args->wordlist = create_list(&free_ast_word);
+					cmd_args->command_args->wordlist = create_list(&free_ast_node);
 				}
 
-				push_back(cmd_args->command_args->wordlist, arg);
+				push_back(cmd_args->command_args->wordlist, node);
 			}
 			else
 			{
@@ -252,6 +319,113 @@ struct AstSimpleCommand* simple_command(struct Parser* parser)
 	return ast_scommand;
 }
 
+/*
+arithm_expression:   arithm_term
+				   | arithm_term (PLUS  arithm_term)*
+				   | arithm_term (MINUS arithm_term)*
+*/
+struct AstArithmExpr* arithm_expression(struct Parser* parser)
+{
+	struct AstArithmExpr* node = arithm_term(parser);
+	if (!node)
+	{
+		// TODO: hanle error
+		return NULL;
+	}
+
+	while (parser->current_token.type == PLUS || parser->current_token.type == MINUS)
+	{
+		enum TokenType type = parser->current_token.type;
+		eat(parser, type, arithm_get_next_token);
+
+		struct AstArithmExpr* temp = calloc(1, sizeof(struct AstArithmExpr));
+		temp->left = node;
+		temp->token.type = type;
+		temp->right = arithm_term(parser);
+
+		node = temp;
+	}
+
+	return node;
+}
+
+/*
+arithm_term:   arithm_factor
+			 | arithm_factor (MULTIPLY arithm_factor)*
+			 | arithm_factor (DIVIDE   arithm_factor)*
+*/
+struct AstArithmExpr* arithm_term(struct Parser* parser)
+{
+	struct AstArithmExpr* node = arithm_factor(parser);
+	if (!node)
+	{
+		// TODO: handle error
+		return NULL;
+	}
+
+	while (parser->current_token.type == MULTIPLY || parser->current_token.type == DIVIDE)
+	{
+		enum TokenType type = parser->current_token.type;
+		eat(parser, type, arithm_get_next_token);
+
+		struct AstArithmExpr* temp = calloc(1, sizeof(struct AstArithmExpr));
+		temp->token.type = type;
+		temp->left = node;
+		temp->right = arithm_factor(parser);
+
+		node = temp;
+	}
+
+	return node;
+}
+
+/*
+arithm_factor:    INTEGER
+				| LPAR arithm_expression RPAR
+				| PLUS  arithm_factor
+				| MINUS arithm_factor
+*/
+struct AstArithmExpr* arithm_factor(struct Parser* parser)
+{
+	struct AstArithmExpr* node = NULL;
+
+	switch (parser->current_token.type)
+	{
+		case INTEGER:
+		{
+			node = calloc(1, sizeof(struct AstArithmExpr));
+			node->token = parser->current_token;
+			eat(parser, INTEGER, arithm_get_next_token);
+		} break;
+		case PLUS:
+		{
+			eat(parser, PLUS, arithm_get_next_token);
+			node = calloc(1, sizeof(struct AstArithmExpr));
+			node->token.type = PLUS;
+			node->left = arithm_factor(parser);
+		} break;
+		case MINUS:
+		{
+			eat(parser, MINUS, arithm_get_next_token);
+			node = calloc(1, sizeof(struct AstArithmExpr));
+			node->token.type = MINUS;
+			node->left = arithm_factor(parser);
+		} break;
+		case LPAR:
+		{
+			eat(parser, LPAR, arithm_get_next_token);
+			node = arithm_expression(parser);
+			eat(parser, RPAR, arithm_get_next_token);
+		} break;
+		default:
+		{
+			//TODO: handle error
+		} break;
+	}
+
+	return node;
+}
+
 struct AstSimpleCommand* parse(struct Parser* parser)
 {
 	if (parser->current_token.type == END)
@@ -266,7 +440,7 @@ void init_buffer(struct Buffer* buffer)
 {
 	buffer->size = 0;
 	buffer->capacity = BUF_CAP;
-	buffer->buffer = (char*)malloc(BUF_CAP);
+	buffer->buffer = malloc(BUF_CAP);
 }
 
 void append_char(struct Buffer* buffer, char c)
@@ -274,7 +448,7 @@ void append_char(struct Buffer* buffer, char c)
 	if (buffer->size >= buffer->capacity)
 	{
 		buffer->capacity <<= 1;
-		buffer->buffer = (char*)realloc(buffer->buffer, buffer->capacity);
+		buffer->buffer = realloc(buffer->buffer, buffer->capacity);
 	}
 
 	buffer->buffer[buffer->size++] = c;
@@ -323,7 +497,14 @@ int handle_io_redirect(char redirect, const char* buffer, size_t* position, int 
 	return 0;
 }
 
-struct Token get_next_token(struct Scanner* scanner)
+static void free_token(struct Token* token)
+{
+	free(token->word.buffer);
+	token->word.buffer = NULL;
+	token->type = END;
+}
+
+struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 {
 	struct Token token;
 	token.type = END;
@@ -350,6 +531,14 @@ struct Token get_next_token(struct Scanner* scanner)
 			{
 				if (!token.word.size)
 				{
+					if (buffer[position] == '(' && buffer[position + 1] == '(') // $((..
+					{
+						free_token(&token);
+						*arithm_expr_beginning = 1;
+						scanner->position = position + 2;
+						return token;
+					}
+
 					token.type = PARAMETER_EXPANSION;
 				}
 				else
@@ -405,13 +594,109 @@ struct Token get_next_token(struct Scanner* scanner)
 	}
 	else
 	{
-		free(token.word.buffer);
-		token.word.buffer = NULL;
+		free_token(&token);
 	}
 
 	scanner->position = position;
 
 	return token;
+}
+
+struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end)
+{
+	struct Token token;
+	token.type = END;
+
+	if (!skip_delim(scanner))
+	{
+		return token;
+	}
+
+	char c = scanner->buffer[scanner->position];
+
+	switch (c)
+	{
+		case '+':
+		{
+			token.type = PLUS;
+			scanner->position++;
+		} break;
+		case '-':
+		{
+			token.type = MINUS;
+			scanner->position++;
+		} break;
+		case '*':
+		{
+			token.type = MULTIPLY;
+			scanner->position++;
+		} break;
+		case '/':
+		{
+			token.type = DIVIDE;
+			scanner->position++;
+		} break;
+		case '(':
+		{
+			token.type = LPAR;
+			scanner->position++;
+		} break;
+		case ')':
+		{
+			token.type = RPAR;
+			scanner->position++;
+		} break;
+		default:
+		{
+			if (c >= '0' && c <= '9')
+			{
+				init_buffer(&token.word);
+
+				if (!arithm_read_integer(scanner, &token))
+				{
+					if (token.word.buffer)
+					{
+						free(token.word.buffer);
+					}
+
+					token.type = END;
+				}
+				else
+				{
+					token.type = INTEGER;
+				}
+			}
+			else
+			{
+				token.type = END;
+			}
+		} break;
+	}
+
+	return token;
+}
+
+int arithm_read_integer(struct Scanner* scanner, struct Token* token) // maybe should be void
+{
+	const char* buffer = scanner->buffer;
+	size_t position = scanner->position;
+
+	for (char c; (c = buffer[position]) != '\0'; position++)
+	{
+		if (c >= '0' && c <= '9')
+		{
+			append_char(&token->word, c);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	scanner->position = position;
+	append_char(&token->word, '\0');
+
+	return !buffer[position] == '\0';
 }
 
 void set_error(struct Error* error, const char* message)
@@ -526,5 +811,29 @@ void free_ast_wordlist(void* wordlist)
 		struct AstWordlist* list = (struct AstWordlist*)wordlist;
 		destroy_list(&list->wordlist);
 		free(list);
+	}
+}
+
+void free_ast_arithm_expr(void* arithm_expr)
+{
+	if (arithm_expr)
+	{
+		struct AstArithmExpr* a = (struct AstArithmExpr*)arithm_expr;
+		
+		if (a->left)
+		{
+			free_ast_arithm_expr(a->left);
+		}
+		if (a->right)
+		{	
+			free_ast_arithm_expr(a->right);
+		}
+
+		if (a->token.word.buffer)
+		{
+			free(a->token.word.buffer);
+		}
+
+		free(a);
 	}
 }
