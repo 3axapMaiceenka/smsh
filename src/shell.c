@@ -102,7 +102,7 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 		{
 			printf("Assignemtns:\n");
 
-			for (struct Node* assignment = command->assignment_list->assignments->root; assignment; assignment = assignment->next)
+			for (struct Node* assignment = command->assignment_list->assignments->head; assignment; assignment = assignment->next)
 			{
 				struct AstAssignment* a = (struct AstAssignment*)assignment->data;
 
@@ -141,6 +141,7 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 							default: break;
 						}
 					} break;
+
 					default: printf("error\n"); break;
 				}
 			}
@@ -155,7 +156,7 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 		{
 			printf("Command arguments:\n");
 
-			for (struct Node* argument = command->command_args->wordlist->root; argument; argument = argument->next)
+			for (struct Node* argument = command->command_args->wordlist->head; argument; argument = argument->next)
 			{
 				struct AstWord* word = (struct AstWord*)(argument->data);
 				printf("%s\n", expand_token(shell, &word->word));

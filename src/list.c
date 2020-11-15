@@ -9,47 +9,41 @@ struct List* create_list(void (*free_data)(void*))
 	return list;
 }
 
-struct Node* push_back(struct List* list, void* data)
+void push_back(struct List* list, void* data)
 {
-	struct Node* last = malloc(sizeof(struct Node));
+	struct Node* last = calloc(1, sizeof(struct Node));
 	last->data = data;
-	last->next = NULL;
 
-	if (!list->root)
+	if (!list->head)
 	{
-		list->root = last;
-		return last;
+		list->head = list->tail = last;
+		return;
 	}
 
-	struct Node* temp = list->root;
-	for (; temp->next; temp = temp->next)
-		;
-
-	temp->next = last;
-
-	return last;
+	list->tail->next = last;
+	list->tail = last;
 }
 
 void destroy_list(struct List** list)
 {
 	if (*list)
 	{
-		free_elements(&(*list)->root, (*list)->free_data);
+		free_elements(&(*list)->head, (*list)->free_data);
 		free(*list);
 		*list = NULL;
 	}
 }
 
-void free_elements(struct Node** root, void (*free_data)(void*))
+void free_elements(struct Node** head, void (*free_data)(void*))
 {
-	if (*root)
+	if (*head)
 	{
-		if ((*root)->next)
+		if ((*head)->next)
 		{
-			free_elements(&(*root)->next, free_data);
-			free((*root)->next);
+			free_elements(&(*head)->next, free_data);
+			free((*head)->next);
 		}
 
-		free_data((*root)->data);
+		free_data((*head)->data);
 	}
 }

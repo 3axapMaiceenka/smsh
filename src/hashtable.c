@@ -71,7 +71,7 @@ struct Entry* get(struct Hashtable* hashtable, const char* key)
 
 	struct Entry* entry = NULL;
 
-	for (struct Node* node = hashtable->table[indx]->entries->root; node; node = node->next)
+	for (struct Node* node = hashtable->table[indx]->entries->head; node; node = node->next)
 	{
 		entry = (struct Entry*)(node->data);
 
