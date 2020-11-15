@@ -58,11 +58,39 @@ int set_variable(struct Shell* shell, const char* var_name, const char* var_valu
 	}
 }
 
+static const char* expand_token(struct Shell* shell, struct Token* token)
+{
+	switch (token->type)
+	{
+		case WORD:
+		{
+			return token->word.buffer;
+		} break;
+		case PARAMETER_EXPANSION:
+		{
+			struct Entry* entry = get(shell->variables, token->word.buffer);
+			if (entry)
+			{
+				return entry->value;
+			}
+			else
+			{
+				return "";
+			}
+		} break;
+		case NAME:
+		{
+			return token->word.buffer;
+		} break;
+		default: return "";
+	}
+}
+
 void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* buffer)
 {
 	if (shell->parser->error->error)
 	{
-		fprintf(stderr, "Error: %s\n", shell->parser->error->error_message);
+		fprintf(stderr, "%s\n", shell->parser->error->error_message);
 		free_ast_simple_command(command);
 
 		return;
@@ -89,9 +117,29 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 					{
 						word = expr->actual_data;
 
-						set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
-
-						printf("Expression: %s\n", word->word.word.buffer);
+						switch (word->word.type)
+						{
+							case WORD:
+							{
+								set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
+								printf("Expression(WORD): %s\n", word->word.word.buffer);
+							} break;
+							case PARAMETER_EXPANSION:
+							{
+								struct Entry* entry = get(shell->variables, word->word.word.buffer);
+								if (entry)
+								{
+									set_variable(shell, a->variable->word.buffer, entry->value);
+									printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", entry->key, entry->value);
+								}
+								else
+								{
+									set_variable(shell, a->variable->word.buffer, "");
+									printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
+								}
+							} break;
+							default: break;
+						}
 					} break;
 					default: printf("error\n"); break;
 				}
@@ -100,7 +148,7 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 
 		if (command->command_name)
 		{
-			printf("Command name: %s\n", command->command_name->word.word.buffer);
+			printf("Command name: %s\n", expand_token(shell, &command->command_name->word));
 		}
 
 		if (command->command_args)
@@ -110,18 +158,18 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 			for (struct Node* argument = command->command_args->wordlist->root; argument; argument = argument->next)
 			{
 				struct AstWord* word = (struct AstWord*)(argument->data);
-				printf("%s\n", word->word.word.buffer);
+				printf("%s\n", expand_token(shell, &word->word));
 			}
 		}
 
 		if (command->input_redirect)
 		{
-			printf("Input redirection to: %s\n", command->input_redirect->file_name->word.word.buffer);
+			printf("Input redirection to: %s\n", expand_token(shell, &command->input_redirect->file_name->word));
 		}
 
 		if (command->output_redirect)
 		{
-			printf("Output redirection to: %s\n", command->output_redirect->file_name->word.word.buffer);
+			printf("Output redirection to: %s\n", expand_token(shell, &command->output_redirect->file_name->word));
 		}
 
 		printf("\n");

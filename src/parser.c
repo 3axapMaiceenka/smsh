@@ -26,20 +26,24 @@ int eat(struct Parser* parser, enum TokenType expected)
 
 struct AstWord* ast_word(struct Parser* parser)
 {
-	if (parser->current_token.type != WORD)
+	if (parser->current_token.type != WORD && parser->current_token.type != PARAMETER_EXPANSION)
 	{
 		return NULL;
 	}
 
 	struct AstWord* word = malloc(sizeof(struct AstWord));
 	copy_token(&word->word, &parser->current_token);
-	eat(parser, WORD);
+	eat(parser, word->word.type);
 
 	return word;
 }
 
-// cmd_prefix:   NAME'='WORD
-//             | cmd_prefix NAME'='WORD
+/*
+cmd_prefix:    NAME'='WORD
+			 | NAME'='PARAMETER_EXPANSION
+			 | cmd_prefix NAME'='WORD
+			 | cmd_prefix NAME'='PARAMETER_EXPANSION
+*/
 struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 {
 	if (parser->current_token.type != NAME)
@@ -58,7 +62,7 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 		copy_token(&token, &parser->current_token);
 		eat(parser, NAME);
 
-		if (parser->current_token.type == WORD) // TODO: add parameter expamsion and arithmetic expanson tokens
+		if (parser->current_token.type == WORD || parser->current_token.type == PARAMETER_EXPANSION) // TODO: add arithmetic expansion token
 		{
 			assignment = calloc(1, sizeof(struct AstAssignment));
 			assignment->variable = malloc(sizeof(struct Token));
@@ -76,7 +80,7 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 		{
 			destroy_list(&assignment_list->assignments);
 			free(assignment_list);
-			set_error(parser->error, "Error: expected WORD token\n");			
+			set_error(parser->error, "Syntax error: invalid assignment statement\n");			
 
 			return NULL;
 		}
@@ -107,7 +111,7 @@ struct AstIORedirect* io_redirect(struct Parser* parser)
 		if (!file_name) 
 		{
 			free(token);
-			set_error(parser->error, "Incomplete I/O redirection! Expected filename!\n");
+			set_error(parser->error, "Syntax error: incomplete I/O redirection! Expected filename!\n");
 
 			return NULL;
 		}
@@ -123,10 +127,12 @@ struct AstIORedirect* io_redirect(struct Parser* parser)
 }
 
 /*
-cmd_suffix:   io_redirect
+cmd_suffix:				 io_redirect
 			| cmd_suffix io_redirect
 			| WORD
+			| PARAMETER_EXPANSION
 			| cmd_suffix WORD
+			| cmd_suffix PARAMETER_EXPANSION
 */
 struct CmdArgs* cmd_suffix(struct Parser* parser)
 {
@@ -194,8 +200,8 @@ struct AstWord* cmd_name(struct Parser* parser)
 simple_command:   cmd_prefix cmd_name cmd_suffix
 				| cmd_prefix cmd_name
 				| cmd_prefix
-				| cmd_name cmd_suffix
-				| cmd_name
+				|            cmd_name cmd_suffix
+				|            cmd_name
 */
 struct AstSimpleCommand* simple_command(struct Parser* parser)
 {
@@ -239,6 +245,7 @@ struct AstSimpleCommand* simple_command(struct Parser* parser)
 			ast_scommand->command_args = cmd_args->command_args;
 			ast_scommand->input_redirect = cmd_args->input_redirect;
 			ast_scommand->output_redirect = cmd_args->output_redirect;
+			free(cmd_args);
 		}
 	}
 
@@ -339,6 +346,18 @@ struct Token get_next_token(struct Scanner* scanner)
 
 		switch (c)
 		{
+			case '$':
+			{
+				if (!token.word.size)
+				{
+					token.type = PARAMETER_EXPANSION;
+				}
+				else
+				{
+					running = 0;
+					position--;
+				}
+			} break;
 			case '<':
 			{
 				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
@@ -354,6 +373,10 @@ struct Token get_next_token(struct Scanner* scanner)
 				{
 					token.type = NAME;
 					running = 0;
+				}
+				else
+				{
+					append_char(&token.word, c);
 				}
 			} break;
 			case 39:
@@ -376,7 +399,7 @@ struct Token get_next_token(struct Scanner* scanner)
 		}
 	}
 
-	if (token.type != INPUT_REDIRECT && token.type != OUTPUT_REDIRECT && token.type != END) // if token.type == END then error occurred during handling quotes
+	if (token.type == WORD || token.type == NAME || token.type == PARAMETER_EXPANSION) // if token.type == END then error occurred during handling quotes
 	{
 		append_char(&token.word, '\0');
 	}

@@ -64,18 +64,18 @@ struct AstNode
 
 struct AstWord
 {
-	struct Token word;
+	struct Token word; // word.type is WORD or PARAMETER_EXPANSION
 };
 
 struct AstWordlist
 {
-	struct List* wordlist;
+	struct List* wordlist; // list contains AstWord structures or NULL
 };
 
 struct AstAssignment
 {
 	struct Token* variable; // variable->type == NAME
-	struct AstNode* expression; // AstWord or AstParamExpansion or AstArithmExpansion
+	struct AstNode* expression; // expresision->node_type is AstWord or AstArithmExpansion
 };
 
 struct AstAssignmentList
@@ -112,21 +112,29 @@ io_redirect:   '<' filename
 struct AstIORedirect* io_redirect(struct Parser* parser);
 
 // filenme: WORD
+//        | PARAMETER_EXPANSION
 struct AstWord* filename(struct Parser* parser);
 
 /*
-cmd_suffix:   io_redirect
+cmd_suffix:				 io_redirect
 			| cmd_suffix io_redirect
 			| WORD
+			| PARAMETER_EXPANSION
 			| cmd_suffix WORD
+			| cmd_suffix PARAMETER_EXPANSION
 */
 struct CmdArgs* cmd_suffix(struct Parser* parser);
 
-// cmd_name: WORD
+// cmd_name:   WORD
+//			 | PARAMETER_EXPANSION
 struct AstWord* cmd_name(struct Parser* parser);
 
-// cmd_prefix:   NAME'='WORD
-//             | cmd_prefix NAME'='WORD
+/*
+cmd_prefix:    NAME'='WORD
+			 | NAME'='PARAMETER_EXPANSION
+             | cmd_prefix NAME'='WORD
+			 | cmd_prefix NAME'='PARAMETER_EXPANSION
+*/			    
 struct AstAssignmentList* cmd_prefix(struct Parser* parser);
 
 /*
@@ -139,6 +147,23 @@ simple_command:   cmd_prefix cmd_name cmd_suffix
 struct AstSimpleCommand* simple_command(struct Parser* parser);
 
 struct AstWord* ast_word(struct Parser* parser);
+
+/*
+pipeline:                         simple_command
+	     | pipeline '|' linebreak simple_command
+
+struct AstPipeline* pipeline(struct Parser* parser);
+
+linebreak: newline_list
+	        | 'empty'
+
+int linebreak(struct Parser* parser);
+
+
+	newline_list :              NEWLINE
+	             | newline_list NEWLINE
+int newline_list(struct Parser* parser);
+*/
 
 struct AstSimpleCommand* parse(struct Parser* parser);
 void set_error(struct Error* error, const char* message);
