@@ -157,10 +157,17 @@ void init_buffer(struct Buffer* buffer);
 
 void append_char(struct Buffer* buffer, char c);
 
+/*scanner part*/
+
 struct Token get_next_token(struct Scanner* scanner);
 
 void copy_token(struct Token* dest, struct Token* src);
 
 int skip_delim(struct Scanner* scanner);
+
+// reads symbols from buffer from position until encountered terminating quote(returns 1 in that case) or '\0'(returns 0)
+int handle_quotes(char quote, size_t* position, const char* buffer, struct Token* token, int* contains_quotes);
+
+int handle_io_redirect(char redirect, const char* buffer, size_t* position, int contains_quotes, struct Token* token);
 
 #endif

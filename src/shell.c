@@ -114,6 +114,16 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 			}
 		}
 
+		if (command->input_redirect)
+		{
+			printf("Input redirection to: %s\n", command->input_redirect->file_name->word.word.buffer);
+		}
+
+		if (command->output_redirect)
+		{
+			printf("Output redirection to: %s\n", command->output_redirect->file_name->word.word.buffer);
+		}
+
 		printf("\n");
 
 		free_ast_simple_command(command);

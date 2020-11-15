@@ -46,25 +46,37 @@ int main()
 	//_test_("'123'456789");
 	//_test_("123'45'67'89'0");
 	//_test_("'123''456'");
-	_test_("123'456'789'0'		'012'345'678''90'");
-	_test_("'shdj'3829'ajij'39203902'sdsdksd'jskdjsld'2903902'					'323213'321321312'3213213123''12313'");
+	//_test_("123'456'789'0'		'012'345'678''90'");
+	//_test_("'shdj'3829'ajij'39203902'sdsdksd'jskdjsld'2903902'					'323213'321321312'3213213123''12313'");
 
 	/*Tests2*/
-	_test_("exec 123 1234 12345 123456");
-	_test_("'1231' '3434' 434'4343243'  4'3432'43'24324' '3243242'");
-	_test_("'3232' '1' '2' 3 4 '5'");
+	//_test_("exec 123 1234 12345 123456");
+	//_test_("'1231' '3434' 434'4343243'  4'3432'43'24324' '3243242'");
+	//_test_("'3232' '1' '2' 3 4 '5'");
 
 	/*Tests3*/
-	_test_("=");
-	_test_("var=");
-	_test_("var=6");
-	_test_("var= cmd_name");
-	_test_("var=ieofjejerirjeirjierjierj");
-	_test_("var=2 var0=3 var1=4\tvar2=5");
-	_test_("var=2     echo 000");
-	_test_("var=5 var=7");
-	_test_("var=2 var0=3     ec'h'o 03'-403'");
-	_test_("===");
+	//_test_("=");
+	//_test_("var=");
+	//_test_("var=6");
+	//_test_("var= cmd_name");
+	//_test_("var=ieofjejerirjeirjierjierj");
+	//_test_("var=2 var0=3\nvar1=4\tvar2=5");
+	//_test_("var=2\n     echo 000");
+	//_test_("var=5 var=7");
+	//_test_("var=2 var0=3     ec'h'o 03'-403'");
+	//_test_("===");
+
+	/*Test4*/
+	_test_("command >file.txt");
+	_test_("comamnd>file.txt");
+	_test_("command>file1.txt<file2.txt");
+	_test_("command > file1.txt < file2.txt");
+	_test_("command arg1 'arg2' >file.txt arg3 '>' <fil0.txt");
+	_test_("command > test1.txt > test2.txt > test3.txt < input.txt");
+	_test_("command > test1.txt > 'test2.txt' < ekjwn'kwerojkj'rewjre");
+	_test_("command >");
+	_test_("command > <");
+	_test_("command > '>'.txt");
 
 	return 0;
 }

@@ -48,7 +48,7 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 	}
 
 	struct AstAssignmentList* assignment_list = calloc(1, sizeof(struct AstAssignmentList));
-	assignment_list->assignments = create_list(free_ast_assignment);
+	assignment_list->assignments = create_list(&free_ast_assignment);
 
 	struct AstAssignment* assignment = NULL;
 	struct Token token;
@@ -273,6 +273,49 @@ void append_char(struct Buffer* buffer, char c)
 	buffer->buffer[buffer->size++] = c;
 }
 
+// reads symbols from buffer from position until encountered terminating quote(returns 1 in that case) or '\0'(returns 0)
+int handle_quotes(char quote, size_t* position, const char* buffer, struct Token* token, int* contains_quotes)
+{
+	while (buffer[*position] != quote && buffer[*position] != '\0')
+	{
+		append_char(&token->word, buffer[(*position)++]);
+	}
+
+	if (buffer[*position] == '\0')
+	{
+		token->type = END;
+		return 0;
+	}
+
+	*contains_quotes = 1;
+	(*position)++;
+
+	return 1;
+}
+
+int handle_io_redirect(char redirect, const char* buffer, size_t* position, int contains_quotes, struct Token* token)
+{
+	if (contains_quotes)
+	{
+		append_char(&token->word, redirect);
+		return 1;
+	}
+
+	if (!token->word.size)
+	{
+		token->type = redirect == '<' ? INPUT_REDIRECT : OUTPUT_REDIRECT;
+	}
+	else
+	{
+		if (buffer[*position] != ' ' && buffer[*position] != '\t' && buffer[*position] != '\0' && buffer[*position] != '\n')
+		{
+			(*position)--;
+		}
+	}
+
+	return 0;
+}
+
 struct Token get_next_token(struct Scanner* scanner)
 {
 	struct Token token;
@@ -294,33 +337,37 @@ struct Token get_next_token(struct Scanner* scanner)
 	{
 		char c = buffer[position++];
 
-		if (c == 39 || c == 34) // single or double quote
+		switch (c)
 		{
-			while (buffer[position] != c && buffer[position] != '\0')
+			case '<':
 			{
-				append_char(&token.word, buffer[position++]);
-			}
-
-			if (buffer[position] == '\0')
+				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
+			} break;
+			case '>':
 			{
-				free(token.word.buffer);
-				return token;
-			}
-
-			contains_quotes = 1;
-			position++;
-		}
-		else
-		{
-			if (c == '=' && !contains_quotes && token.word.size && buffer[position] != ' ' && buffer[position] != '\n' && buffer[position] != '\0' && buffer[position] != '\t')
+				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
+			} break;
+			case '=':
 			{
-				token.type = NAME;
-				running = 0;
-			}
-			else
+				if (!contains_quotes && token.word.size && buffer[position] != ' ' && buffer[position] != '\n'
+					&& buffer[position] != '\0' && buffer[position] != '\t')
+				{
+					token.type = NAME;
+					running = 0;
+				}
+			} break;
+			case 39:
+			{
+				running = handle_quotes(c, &position, buffer, &token, &contains_quotes); 
+			} break;
+			case 34:
+			{
+				running = handle_quotes(c, &position, buffer, &token, &contains_quotes); 
+			} break;
+			default:
 			{
 				append_char(&token.word, c);
-			}
+			} break;
 		}
 
 		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '\0')
@@ -329,7 +376,16 @@ struct Token get_next_token(struct Scanner* scanner)
 		}
 	}
 
-	append_char(&token.word, '\0');
+	if (token.type != INPUT_REDIRECT && token.type != OUTPUT_REDIRECT && token.type != END) // if token.type == END then error occurred during handling quotes
+	{
+		append_char(&token.word, '\0');
+	}
+	else
+	{
+		free(token.word.buffer);
+		token.word.buffer = NULL;
+	}
+
 	scanner->position = position;
 
 	return token;
