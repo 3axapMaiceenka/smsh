@@ -9,6 +9,7 @@ struct Shell* start()
 	struct Shell* shell = malloc(sizeof(struct Shell));
 	shell->parser = calloc(1, sizeof(struct Parser));
 	shell->scanner = calloc(1, sizeof(struct Scanner));
+	shell->execution_error = calloc(1, sizeof(struct Error));
 	shell->variables = create_hashtable(DEFAULT_HASHTABLE_SIZE);
 
 	shell->parser->scanner = shell->scanner;
@@ -21,12 +22,9 @@ void stop(struct Shell* shell)
 {
 	if (shell)
 	{
-		if (shell->parser->error->error_message)
-		{
-			free(shell->parser->error->error_message);
-		}
+		destroy_error(shell->parser->error);
+		destroy_error(shell->execution_error);
 
-		free(shell->parser->error);
 		free(shell->parser);
 		free(shell->scanner);
 
@@ -86,14 +84,49 @@ static const char* expand_token(struct Shell* shell, struct Token* token)
 	}
 }
 
+static int is_integer(const char* string)
+{
+	if (*string == '-' || (*string >= '1' && *string <= '9'))
+	{
+		string++;
+
+		for (; *string; string++)
+		{
+			if (*string < '0' || *string > '9')
+			{
+				return 0;
+			}
+		}
+
+		return 1;
+	}
+
+	return 0;
+}
+
 int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 {
-	//TODO: add parameter expansion execution
 	switch (arithm_expr->token.type)
 	{
 		case INTEGER:
 		{
 			return atoi(arithm_expr->token.word.buffer);
+		} break;
+		case PARAMETER_EXPANSION:
+		{
+			const char* value = expand_token(shell, &arithm_expr->token);
+
+			if (is_integer(value))
+			{
+				return atoi(value);
+			}
+			else
+			{
+				if (!shell->execution_error->error)
+				{
+					set_error(shell->execution_error, "Execution error! Invalid parameter expansion inside arithmetic expansion!");
+				}
+			}
 		} break;
 		case MULTIPLY:
 		{
@@ -127,19 +160,18 @@ int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 		} break;
 		default:
 		{
-			//TODO: handle properly
-			return 0;
 		} break;
 	}
+
+	return 0;
 }
 
-void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* buffer)
+void execute(struct Shell* shell, struct AstSimpleCommand* command)
 {
 	if (shell->parser->error->error)
 	{
 		fprintf(stderr, "%s\n", shell->parser->error->error_message);
 		free_ast_simple_command(command);
-
 		return;
 	}
 
@@ -194,6 +226,13 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 						char str[12];
 						arithm_expr = expr->actual_data;
 						sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+
+						if (shell->execution_error->error)
+						{
+							fprintf(stderr, "%s\n", shell->execution_error->error_message);
+							return;
+						}
+
 						set_variable(shell, a->variable->word.buffer, str);
 						printf("Expression(Arithmetic expansion): %s\n", str);
 					} break;
@@ -225,6 +264,12 @@ void execute(struct Shell* shell, struct AstSimpleCommand* command, const char* 
 				{
 					struct AstArithmExpr* arithm_expr = node->actual_data;
 					printf("(Arithmetic expansion) %d\n", execute_arithm_expr(shell, arithm_expr));
+
+					if (shell->execution_error->error)
+					{
+						fprintf(stderr, "%s\n", shell->execution_error->error_message);
+						return;
+					}
 				}
 			}
 		}

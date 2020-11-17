@@ -380,6 +380,7 @@ struct AstArithmExpr* arithm_term(struct Parser* parser)
 
 /*
 arithm_factor:    INTEGER
+				| PARAMETER_EXPANSION
 				| LPAR arithm_expression RPAR
 				| PLUS  arithm_factor
 				| MINUS arithm_factor
@@ -395,6 +396,12 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 			node = calloc(1, sizeof(struct AstArithmExpr));
 			node->token = parser->current_token;
 			eat(parser, INTEGER, arithm_get_next_token);
+		} break;
+		case PARAMETER_EXPANSION:
+		{
+			node = calloc(1, sizeof(struct AstArithmExpr));
+			node->token = parser->current_token;
+			eat(parser, PARAMETER_EXPANSION, arithm_get_next_token);
 		} break;
 		case PLUS:
 		{
@@ -423,7 +430,6 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 		} break;
 		default:
 		{
-			//TODO: handle error
 		} break;
 	}
 
@@ -438,12 +444,6 @@ struct AstSimpleCommand* parse(struct Parser* parser)
 	}
 
 	return simple_command(parser);
-}
-
-void set_error(struct Error* error, const char* message)
-{
-	error->error_message = copy_string(message);
-	error->error = 1;
 }
 
 void free_ast_simple_command(void* ast_scommand)

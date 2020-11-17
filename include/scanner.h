@@ -54,7 +54,7 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 
 struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end);
 
-int arithm_read_integer(struct Scanner* scanner, struct Token* token);
+void arithm_read_integer(struct Scanner* scanner, struct Token* token);
 
 void copy_token(struct Token* dest, struct Token* src);
 

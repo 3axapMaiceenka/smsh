@@ -176,6 +176,41 @@ int skip_delim(struct Scanner* scanner)
 	return scanner->buffer[scanner->position] != '\0';
 }
 
+static void arithm_read_param_exp(struct Scanner* scanner, struct Token* token)
+{
+	const char* buffer = scanner->buffer;
+	size_t position = scanner->position;
+
+	init_buffer(&token->word);
+
+	char c;
+	while (1)
+	{
+		c = buffer[++position];
+
+		if (c != ' ' && c != '\t' && c != '\n' && c != '\0' && c != ')')
+		{
+			append_char(&token->word, c);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (c == '\0' || !token->word.size)
+	{
+		free_token(token);
+	}
+	else
+	{
+		token->type = PARAMETER_EXPANSION;
+		append_char(&token->word, '\0');
+	}
+
+	scanner->position = position;
+} 
+
 struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end)
 {
 	struct Token token;
@@ -190,70 +225,55 @@ struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end
 
 	switch (c)
 	{
-	case '+':
-	{
-		token.type = PLUS;
-		scanner->position++;
-	} break;
-	case '-':
-	{
-		token.type = MINUS;
-		scanner->position++;
-	} break;
-	case '*':
-	{
-		token.type = MULTIPLY;
-		scanner->position++;
-	} break;
-	case '/':
-	{
-		token.type = DIVIDE;
-		scanner->position++;
-	} break;
-	case '(':
-	{
-		token.type = LPAR;
-		scanner->position++;
-	} break;
-	case ')':
-	{
-		token.type = RPAR;
-		scanner->position++;
-	} break;
-	default:
-	{
-		if (c >= '0' && c <= '9')
+		case '+':
 		{
-			init_buffer(&token.word);
-
-			if (!arithm_read_integer(scanner, &token))
-			{
-				if (token.word.buffer)
-				{
-					free(token.word.buffer);
-				}
-
-				token.type = END;
-			}
-			else
-			{
-				token.type = INTEGER;
-			}
-		}
-		else
+			token.type = PLUS;
+			scanner->position++;
+		} break;
+		case '-':
 		{
-			token.type = END;
-		}
-	} break;
+			token.type = MINUS;
+			scanner->position++;
+		} break;
+		case '*':
+		{
+			token.type = MULTIPLY;
+			scanner->position++;
+		} break;
+		case '/':
+		{
+			token.type = DIVIDE;
+			scanner->position++;
+		} break;
+		case '(':
+		{
+			token.type = LPAR;
+			scanner->position++;
+		} break;
+		case ')':
+		{
+			token.type = RPAR;
+			scanner->position++;
+		} break;
+		case '$':
+		{
+			arithm_read_param_exp(scanner, &token);
+		} break;
+		default:
+		{
+			arithm_read_integer(scanner, &token);
+		} break;
 	}
 
 	return token;
 }
 
-int arithm_read_integer(struct Scanner* scanner, struct Token* token) // maybe should be void
+void arithm_read_integer(struct Scanner* scanner, struct Token* token)
 {
 	const char* buffer = scanner->buffer;
 	size_t position = scanner->position;
+
+	init_buffer(&token->word);
 
 	for (char c; (c = buffer[position]) != '\0'; position++)
 	{
@@ -267,10 +287,17 @@ int arithm_read_integer(struct Scanner* scanner, struct Token* token) // maybe s
 		}
 	}
 
-	scanner->position = position;
-	append_char(&token->word, '\0');
+	if (token->word.size && buffer[position] != '\0')
+	{
+		append_char(&token->word, '\0');
+		token->type = INTEGER;
+	}
+	else
+	{
+		free_token(token);
+	}
 
-	return !buffer[position] == '\0';
+	scanner->position = position;
 }
 
 void copy_token(struct Token* dest, struct Token* src)

@@ -4,12 +4,6 @@
 #include <stdlib.h>
 #include "scanner.h"
 
-struct Error
-{
-	char* error_message;
-	int error; // 1 or 0
-};
-
 struct Parser
 {
 	struct Token current_token;
@@ -144,6 +138,7 @@ struct AstArithmExpr* arithm_term(struct Parser* parser);
 
 /*
 arithm_factor:    INTEGER
+			    | PARAMETER_EXPANSION
 				| LPAR arithm_expression RPAR
 				| PLUS  arithm_factor
 				| MINUS arithm_factor
@@ -170,8 +165,6 @@ int newline_list(struct Parser* parser);
 */
 
 struct AstSimpleCommand* parse(struct Parser* parser);
-
-void set_error(struct Error* error, const char* message);
 
 void free_ast_simple_command(void* ast_scommand); // ast_scommand is a pointer to struct AstSimpleCommand
 void free_ast_assignment_list(void* assignment_list); // assignment_list is a pointer to struct AstAssignmentList

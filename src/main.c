@@ -17,7 +17,7 @@ void _test_(const char* string)
 	initialize(shell, test);
 
 	struct AstSimpleCommand* sc = parse(shell->parser);
-	execute(shell, sc, test);
+	execute(shell, sc);
 
 	stop(shell);
 
@@ -95,16 +95,21 @@ int main()
 	//_test_("$$$$$$");
 
 	/*Test6*/
-	_test_("var=$((2*/3))");
-	_test_("var=$((eif))");
-	_test_("var=$((2/3)))");
-	_test_("var=5 $((3+2))");
-	_test_("$((1+1))");
-	_test_("cmd_name $((4+2))");
-	_test_("cmd_name $((2*1 / (2))) $((1 + 2 + 3 - 4 )) ");
-	_test_("var=$((5+6)) cmd_name $var $((2*1-3))");
-	_test_("var=$((3 - 2 +--+12 / (4 * 2 - (4 / 2)) * 10 + (((-(1))))))");
-	_test_("var=$((4/2 -     1   + (-6 / +- 5))) cmd_name $((3- 2+ 1- (-(-(-(4)))) * 3 / 2))");
+	//_test_("var=$((2*/3))");
+	//_test_("var=$((eif))");
+	//_test_("var=$((2/3)))");
+	//_test_("var=5 $((3+2))");
+	//_test_("$((1+1))");
+	//_test_("cmd_name $((4+2))");
+	//_test_("cmd_name $((2*1 / (2))) $((1 + 2 + 3 - 4 )) ");
+	//_test_("var=$((5+6)) cmd_name $var $((2*1-3))");
+	//_test_("var=$((3 - 2 +--+12 / (4 * 2 - (4 / 2)) * 10 + (((-(1))))))");
+	//_test_("var=$((4/2 -     1   + (-6 / +- 5))) cmd_name $((3- 2+ 1- (-(-(-(4)))) * 3 / 2))");
+
+	/*Test7*/
+	_test_("var=$((2+3-1)) cmd_name $((1 + $var - 5))");
+	_test_("var=$((2+3-1)) var=$(($var)) cmd_name $((1 + $var * $var -(-(($var)))))");
+	_test_("var=$((2+3-1)) var0=$((1 + $var - -1 * $var)) cmd_name $((1 + $var - 5 + $var0))");
 
 	return 0;
 }
