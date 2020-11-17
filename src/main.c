@@ -95,6 +95,9 @@ int main()
 	//_test_("$$$$$$");
 
 	/*Test6*/
+	_test_("var=$((2*/3))");
+	_test_("var=$((eif))");
+	_test_("var=$((2/3)))");
 	_test_("var=5 $((3+2))");
 	_test_("$((1+1))");
 	_test_("cmd_name $((4+2))");

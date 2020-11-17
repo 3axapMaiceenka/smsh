@@ -3,16 +3,6 @@
 #include "utility.h"
 #include <stdio.h>
 
-int skip_delim(struct Scanner* scanner)
-{
-	while (scanner->buffer[scanner->position] == ' ' || scanner->buffer[scanner->position] == '\t')
-	{
-		scanner->position++;
-	}
-
-	return scanner->buffer[scanner->position] != '\0';
-}
-
 // get_token(...) function is get_next_token(...) or arithm_get_next_token(...) (if parser->parsing_arithm_expr == 1)
 int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*))
 {
@@ -94,7 +84,12 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 		{
 			destroy_list(&assignment_list->assignments);
 			free(assignment_list);
-			set_error(parser->error, "Syntax error: invalid assignment statement\n");			
+
+			if (!parser->error->error)
+			{
+				set_error(parser->error, "Syntax error: invalid assignment statement\n");
+			}
+
 			return NULL;
 		}
 	} while (parser->current_token.type == NAME);
@@ -329,7 +324,6 @@ struct AstArithmExpr* arithm_expression(struct Parser* parser)
 	struct AstArithmExpr* node = arithm_term(parser);
 	if (!node)
 	{
-		// TODO: hanle error
 		return NULL;
 	}
 
@@ -359,7 +353,6 @@ struct AstArithmExpr* arithm_term(struct Parser* parser)
 	struct AstArithmExpr* node = arithm_factor(parser);
 	if (!node)
 	{
-		// TODO: handle error
 		return NULL;
 	}
 
@@ -372,6 +365,12 @@ struct AstArithmExpr* arithm_term(struct Parser* parser)
 		temp->token.type = type;
 		temp->left = node;
 		temp->right = arithm_factor(parser);
+
+		if (!temp->right)
+		{
+			free_ast_arithm_expr(temp);
+			return NULL;
+		}
 
 		node = temp;
 	}
@@ -415,7 +414,12 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 		{
 			eat(parser, LPAR, arithm_get_next_token);
 			node = arithm_expression(parser);
-			eat(parser, RPAR, arithm_get_next_token);
+
+			if (!eat(parser, RPAR, arithm_get_next_token))
+			{
+				free_ast_arithm_expr(node);
+				return NULL;
+			}
 		} break;
 		default:
 		{
@@ -436,281 +440,10 @@ struct AstSimpleCommand* parse(struct Parser* parser)
 	return simple_command(parser);
 }
 
-void init_buffer(struct Buffer* buffer)
-{
-	buffer->size = 0;
-	buffer->capacity = BUF_CAP;
-	buffer->buffer = malloc(BUF_CAP);
-}
-
-void append_char(struct Buffer* buffer, char c)
-{
-	if (buffer->size >= buffer->capacity)
-	{
-		buffer->capacity <<= 1;
-		buffer->buffer = realloc(buffer->buffer, buffer->capacity);
-	}
-
-	buffer->buffer[buffer->size++] = c;
-}
-
-// reads symbols from buffer from position until encountered terminating quote(returns 1 in that case) or '\0'(returns 0)
-int handle_quotes(char quote, size_t* position, const char* buffer, struct Token* token, int* contains_quotes)
-{
-	while (buffer[*position] != quote && buffer[*position] != '\0')
-	{
-		append_char(&token->word, buffer[(*position)++]);
-	}
-
-	if (buffer[*position] == '\0')
-	{
-		token->type = END;
-		return 0;
-	}
-
-	*contains_quotes = 1;
-	(*position)++;
-
-	return 1;
-}
-
-int handle_io_redirect(char redirect, const char* buffer, size_t* position, int contains_quotes, struct Token* token)
-{
-	if (contains_quotes)
-	{
-		append_char(&token->word, redirect);
-		return 1;
-	}
-
-	if (!token->word.size)
-	{
-		token->type = redirect == '<' ? INPUT_REDIRECT : OUTPUT_REDIRECT;
-	}
-	else
-	{
-		if (buffer[*position] != ' ' && buffer[*position] != '\t' && buffer[*position] != '\0' && buffer[*position] != '\n')
-		{
-			(*position)--;
-		}
-	}
-
-	return 0;
-}
-
-static void free_token(struct Token* token)
-{
-	free(token->word.buffer);
-	token->word.buffer = NULL;
-	token->type = END;
-}
-
-struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
-{
-	struct Token token;
-	token.type = END;
-
-	if (!skip_delim(scanner))
-	{
-		return token;
-	}
-
-	token.type = WORD;
-	init_buffer(&token.word);
-
-	const char* buffer = scanner->buffer;
-	size_t position = scanner->position;
-	int contains_quotes = 0;
-
-	for (int running = 1; running; )
-	{
-		char c = buffer[position++];
-
-		switch (c)
-		{
-			case '$':
-			{
-				if (!token.word.size)
-				{
-					if (buffer[position] == '(' && buffer[position + 1] == '(') // $((..
-					{
-						free_token(&token);
-						*arithm_expr_beginning = 1;
-						scanner->position = position + 2;
-						return token;
-					}
-
-					token.type = PARAMETER_EXPANSION;
-				}
-				else
-				{
-					running = 0;
-					position--;
-				}
-			} break;
-			case '<':
-			{
-				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
-			} break;
-			case '>':
-			{
-				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
-			} break;
-			case '=':
-			{
-				if (!contains_quotes && token.word.size && buffer[position] != ' ' && buffer[position] != '\n'
-					&& buffer[position] != '\0' && buffer[position] != '\t')
-				{
-					token.type = NAME;
-					running = 0;
-				}
-				else
-				{
-					append_char(&token.word, c);
-				}
-			} break;
-			case 39:
-			{
-				running = handle_quotes(c, &position, buffer, &token, &contains_quotes); 
-			} break;
-			case 34:
-			{
-				running = handle_quotes(c, &position, buffer, &token, &contains_quotes); 
-			} break;
-			default:
-			{
-				append_char(&token.word, c);
-			} break;
-		}
-
-		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '\0')
-		{
-			break;
-		}
-	}
-
-	if (token.type == WORD || token.type == NAME || token.type == PARAMETER_EXPANSION) // if token.type == END then error occurred during handling quotes
-	{
-		append_char(&token.word, '\0');
-	}
-	else
-	{
-		free_token(&token);
-	}
-
-	scanner->position = position;
-
-	return token;
-}
-
-struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end)
-{
-	struct Token token;
-	token.type = END;
-
-	if (!skip_delim(scanner))
-	{
-		return token;
-	}
-
-	char c = scanner->buffer[scanner->position];
-
-	switch (c)
-	{
-		case '+':
-		{
-			token.type = PLUS;
-			scanner->position++;
-		} break;
-		case '-':
-		{
-			token.type = MINUS;
-			scanner->position++;
-		} break;
-		case '*':
-		{
-			token.type = MULTIPLY;
-			scanner->position++;
-		} break;
-		case '/':
-		{
-			token.type = DIVIDE;
-			scanner->position++;
-		} break;
-		case '(':
-		{
-			token.type = LPAR;
-			scanner->position++;
-		} break;
-		case ')':
-		{
-			token.type = RPAR;
-			scanner->position++;
-		} break;
-		default:
-		{
-			if (c >= '0' && c <= '9')
-			{
-				init_buffer(&token.word);
-
-				if (!arithm_read_integer(scanner, &token))
-				{
-					if (token.word.buffer)
-					{
-						free(token.word.buffer);
-					}
-
-					token.type = END;
-				}
-				else
-				{
-					token.type = INTEGER;
-				}
-			}
-			else
-			{
-				token.type = END;
-			}
-		} break;
-	}
-
-	return token;
-}
-
-int arithm_read_integer(struct Scanner* scanner, struct Token* token) // maybe should be void
-{
-	const char* buffer = scanner->buffer;
-	size_t position = scanner->position;
-
-	for (char c; (c = buffer[position]) != '\0'; position++)
-	{
-		if (c >= '0' && c <= '9')
-		{
-			append_char(&token->word, c);
-		}
-		else
-		{
-			break;
-		}
-	}
-
-	scanner->position = position;
-	append_char(&token->word, '\0');
-
-	return !buffer[position] == '\0';
-}
-
 void set_error(struct Error* error, const char* message)
 {
 	error->error_message = copy_string(message);
 	error->error = 1;
-}
-
-void copy_token(struct Token* dest, struct Token* src)
-{
-	dest->type = src->type;
-	dest->word.buffer = src->word.buffer;
-	dest->word.capacity = src->word.capacity;
-	dest->word.size = src->word.size;
 }
 
 void free_ast_simple_command(void* ast_scommand)

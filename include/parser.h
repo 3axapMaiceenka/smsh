@@ -2,49 +2,7 @@
 #define PARSER_H
 
 #include <stdlib.h>
-
-#define BUF_CAP 32
-
-enum TokenType
-{
-	NEWLINE,
-	WORD,
-	NAME,
-	PARAMETER_EXPANSION,
-	INPUT_REDIRECT,
-	OUTPUT_REDIRECT,
-	
-	/*those are used while reading arithmetic expression*/
-	INTEGER,
-	PLUS,
-	MINUS,
-	MULTIPLY,
-	DIVIDE,
-	LPAR,
-	RPAR,
-	/****************************************************/
-
-	END
-};
-
-struct Scanner
-{
-	char* buffer;
-	size_t position;
-};
-
-struct Buffer
-{
-	char* buffer;
-	size_t capacity;
-	size_t size;
-};
-
-struct Token
-{
-	struct Buffer word;
-	enum TokenType type;
-};
+#include "scanner.h"
 
 struct Error
 {
@@ -212,6 +170,7 @@ int newline_list(struct Parser* parser);
 */
 
 struct AstSimpleCommand* parse(struct Parser* parser);
+
 void set_error(struct Error* error, const char* message);
 
 void free_ast_simple_command(void* ast_scommand); // ast_scommand is a pointer to struct AstSimpleCommand
@@ -225,29 +184,5 @@ void free_ast_arithm_expr(void* arithm_expr); // arithm_expr is a pointer to str
 
 // get_token function is get_next_token or arithm_get_next_token
 int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*));
-
-/*scanner part*/
-
-void init_buffer(struct Buffer* buffer);
-
-void append_char(struct Buffer* buffer, char c);
-
-struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning);
-
-/*while parsing arithmetic expansion, those functions are used*/
-
-struct Token arithm_get_next_token(struct Scanner* scanner, int* arithm_expr_end);
-
-int arithm_read_integer(struct Scanner* scanner, struct Token* token);
-
-/***********************************************************************************/
-void copy_token(struct Token* dest, struct Token* src);
-
-int skip_delim(struct Scanner* scanner);
-
-// reads symbols from buffer from position until encountered terminating quote(returns 1 in that case) or '\0'(returns 0)
-int handle_quotes(char quote, size_t* position, const char* buffer, struct Token* token, int* contains_quotes);
-
-int handle_io_redirect(char redirect, const char* buffer, size_t* position, int contains_quotes, struct Token* token);
 
 #endif
