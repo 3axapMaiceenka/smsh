@@ -166,134 +166,143 @@ int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 	return 0;
 }
 
-void execute(struct Shell* shell, struct AstPipeline* pipe)
+void execute(struct Shell* shell, struct AstPipelineList* pipe_list)
 {
 	if (shell->parser->error->error)
 	{
 		fprintf(stderr, "%s\n", shell->parser->error->error_message);
-		free_ast_pipeline(pipe);
+		free_ast_pipeline_list(pipe_list);
 
 		return;
 	}
 
-	if (pipe)
+	if (pipe_list)
 	{
-		printf("Pipeline:\n\n");
+		printf("Pipeline list:\n");
 
-		for (struct Node* sc = pipe->pipeline->head; sc; sc = sc->next)
+		for (struct Node* node = pipe_list->pipelines->head; node; node = node->next)
 		{
-			printf("\tCommand:\n\n");
-			struct AstSimpleCommand* command = sc->data;
+			printf("Pipeline:\n");
 
-			if (command->assignment_list)
+			struct AstPipeline* pipe = (struct AstPipeline*)node->data;
+
+			pipe->mode == FOREGROUND ? printf("Mode: foreground\n") : printf("Mode: background\n");
+
+			for (struct Node* sc = pipe->pipeline->head; sc; sc = sc->next)
 			{
-				printf("Assignemtns:\n");
+				printf("Command:\n");
 
-				for (struct Node* assignment = command->assignment_list->assignments->head; assignment; assignment = assignment->next)
+				struct AstSimpleCommand* command = sc->data;
+
+				if (command->assignment_list)
 				{
-					struct AstAssignment* a = (struct AstAssignment*)assignment->data;
+					printf("Assignemtns:\n");
 
-					printf("Variable name: %s\n", a->variable->word.buffer);
-
-					struct AstNode* expr = a->expression;
-					struct AstWord* word = NULL;
-					struct AstArithmExpr* arithm_expr = NULL;
-
-					switch (expr->node_type)
+					for (struct Node* assignment = command->assignment_list->assignments->head; assignment; assignment = assignment->next)
 					{
-						case AST_WORD:
-						{
-							word = expr->actual_data;
+						struct AstAssignment* a = (struct AstAssignment*)assignment->data;
 
-							switch (word->word.type)
-							{
-								case WORD:
-								{
-									set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
-									printf("Expression(WORD): %s\n", word->word.word.buffer);
-								} break;
-								case PARAMETER_EXPANSION:
-								{
-									struct Entry* entry = get(shell->variables, word->word.word.buffer);
-									if (entry)
-									{	
-										set_variable(shell, a->variable->word.buffer, entry->value);
-										printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", entry->key, entry->value);
-									}
-									else
-									{
-										set_variable(shell, a->variable->word.buffer, "");
-										printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
-									}
-								} break;
-								default: break;
-							}
-						} break;
-						case AST_ARITHM_EXPR:
+						printf("Variable name: %s\n", a->variable->word.buffer);
+
+						struct AstNode* expr = a->expression;
+						struct AstWord* word = NULL;
+						struct AstArithmExpr* arithm_expr = NULL;
+
+						switch (expr->node_type)
 						{
-							char str[12];
-							arithm_expr = expr->actual_data;
-							sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+							case AST_WORD:
+							{
+								word = expr->actual_data;
+
+								switch (word->word.type)
+								{
+									case WORD:
+									{
+										set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
+										printf("Expression(WORD): %s\n", word->word.word.buffer);
+									} break;
+									case PARAMETER_EXPANSION:
+									{
+										struct Entry* entry = get(shell->variables, word->word.word.buffer);
+										if (entry)
+										{
+											set_variable(shell, a->variable->word.buffer, entry->value);
+											printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", entry->key, entry->value);
+										}
+										else
+										{
+											set_variable(shell, a->variable->word.buffer, "");
+											printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
+										}
+									} break;
+									default: break;
+								}								
+							} break;
+							case AST_ARITHM_EXPR:
+							{
+								char str[12];
+								arithm_expr = expr->actual_data;
+								sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+
+								if (shell->execution_error->error)
+								{
+									fprintf(stderr, "%s\n", shell->execution_error->error_message);
+									return;
+								}
+
+								set_variable(shell, a->variable->word.buffer, str);
+								printf("Expression(Arithmetic expansion): %s\n", str);
+							} break;
+							default: printf("error\n"); break;
+						}
+					}
+				}
+
+				if (command->command_name)
+				{
+					printf("Command name: %s\n", expand_token(shell, &command->command_name->word));
+				}
+
+				if (command->command_args)
+				{
+					printf("Command arguments:\n");
+
+					for (struct Node* argument = command->command_args->wordlist->head; argument; argument = argument->next)
+					{
+						struct AstNode* node = (struct AstNode*)(argument->data);
+
+						if (node->node_type == AST_WORD)
+						{
+							struct AstWord* arg = node->actual_data;
+							printf("(WORD) %s\n", expand_token(shell, &arg->word));
+						}
+						else
+						{
+							struct AstArithmExpr* arithm_expr = node->actual_data;
+							printf("(Arithmetic expansion) %d\n", execute_arithm_expr(shell, arithm_expr));
 
 							if (shell->execution_error->error)
 							{
 								fprintf(stderr, "%s\n", shell->execution_error->error_message);
 								return;
 							}
-
-							set_variable(shell, a->variable->word.buffer, str);
-							printf("Expression(Arithmetic expansion): %s\n", str);
-						} break;
-
-						default: printf("error\n"); break;
-					}
-				}
-			}
-
-			if (command->command_name)
-			{
-				printf("Command name: %s\n", expand_token(shell, &command->command_name->word));
-			}
-
-			if (command->command_args)
-			{
-				printf("Command arguments:\n");
-
-				for (struct Node* argument = command->command_args->wordlist->head; argument; argument = argument->next)
-				{
-					struct AstNode* node = (struct AstNode*)(argument->data);
-
-					if (node->node_type == AST_WORD)
-					{
-						struct AstWord* arg = node->actual_data;
-						printf("(WORD) %s\n", expand_token(shell, &arg->word));
-					}
-					else
-					{
-						struct AstArithmExpr* arithm_expr = node->actual_data;
-						printf("(Arithmetic expansion) %d\n", execute_arithm_expr(shell, arithm_expr));
-
-						if (shell->execution_error->error)
-						{
-							fprintf(stderr, "%s\n", shell->execution_error->error_message);
-							return;
 						}
 					}
 				}
-			}
 
-			if (command->input_redirect)
-			{
-				printf("Input redirection to: %s\n", expand_token(shell, &command->input_redirect->file_name->word));
-			}
+				if (command->input_redirect)
+				{
+					printf("Input redirection to: %s\n", expand_token(shell, &command->input_redirect->file_name->word));
+				}
 
-			if (command->output_redirect)
-			{
-				printf("Output redirection to: %s\n", expand_token(shell, &command->output_redirect->file_name->word));
+				if (command->output_redirect)
+				{
+					printf("Output redirection to: %s\n", expand_token(shell, &command->output_redirect->file_name->word));
+				}
 			}
-
-			free_ast_simple_command(command);
 		}
+
+		free_ast_pipeline_list(pipe_list);
 	}
 
 	printf("\n");

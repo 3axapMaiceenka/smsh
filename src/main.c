@@ -16,8 +16,8 @@ void _test_(const char* string)
 
 	initialize(shell, test);
 
-	struct AstPipeline* pipe = parse(shell->parser);
-	execute(shell, pipe);
+	struct AstPipelineList* pipe_list = parse(shell->parser);
+	execute(shell, pipe_list);
 
 	stop(shell);
 
@@ -112,13 +112,29 @@ int main()
 	//_test_("var=$((2+3-1)) var0=$((1 + $var - -1 * $var)) cmd_name $((1 + $var - 5 + $var0))");
 
 	/*Test8*/
+	//_test_("cmd");
+	//_test_("cmd1| cmd2");
+	//_test_("cmd1 |cmd2");
+	//_test_("cmd1 arg1|cmd2 arg2");
+	//_test_("var=$((2 + 3)) cmd_name arg1 $var | \n var2=3 cmd_name2 arg arg2 arg3 $var2 $var");
+	//_test_("cmd1|cmd2| cmd3 |   cmd4   |cmd5 | \n\n\n\n\n cmd6 |cmd7 | \n cmd8 |\t\n cmd9");
+	//_test_("cmd_name \n | cmd_name2");
+
+	/*Test9*/
 	_test_("cmd");
-	_test_("cmd1| cmd2");
-	_test_("cmd1 |cmd2");
-	_test_("cmd1 arg1|cmd2 arg2");
-	_test_("var=$((2 + 3)) cmd_name arg1 $var | \n var2=3 cmd_name2 arg arg2 arg3 $var2 $var");
-	_test_("cmd1|cmd2| cmd3 |   cmd4   |cmd5 | \n\n\n\n\n cmd6 |cmd7 | \n cmd8 |\t\n cmd9");
-	_test_("cmd_name \n | cmd_name2");
+	_test_("cmd\n");
+	_test_("\ncmd\n");
+	_test_("cmd1 \n cmd2");
+	_test_("cmd1 | cmd2\n cmd3 \n cmd4");
+	_test_("var=$((2+1)) cmd_name >output.txt $var <input.txt | cmd1 arg1 arg2 arg3\n cmd2 $var >output.txt |test\n cmd\n");
+	_test_("cmd1 & cmd2");
+	_test_("cmd1;cmd2");
+	_test_("cmd1& cmd2;");
+	_test_("cmd1; cmd2;");
+	_test_("cmd1 | cmd2& cmd3;cmd4");
+	_test_("var=0\nvar0=1\ncmd1 arg1 arg2 $var | cmd2 $var0\nvar=$var0\ncmd3|cmd4 &\n");
+	_test_("cmd&\ncmd0;");
+	_test_("cmd&cmd2;cmd3;cm4;cmd5 | cmd6;cm7&");
 
 	return 0;
 }

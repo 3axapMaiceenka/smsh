@@ -10,12 +10,14 @@ enum TokenType
 	NEWLINE,
 	WORD,
 	NAME,
-	PARAMETER_EXPANSION,
-	INPUT_REDIRECT,
-	OUTPUT_REDIRECT,
-	PIPE,
+	PARAMETER_EXPANSION, // '$...'
+	INPUT_REDIRECT, // '<'
+	OUTPUT_REDIRECT, // '>'
+	PIPE, // '|'
+	ASYNC_LIST, // '&'
+	SEQ_LIST, // ';'
 
-	/*those are used while reading arithmetic expression*/
+	/*these are used while reading arithmetic expression*/
 	INTEGER,
 	PLUS,
 	MINUS,

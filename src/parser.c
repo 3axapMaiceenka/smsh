@@ -436,21 +436,200 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 	return node;
 }
 
-struct AstPipeline* parse(struct Parser* parser)
+/*
+pipeline:                         simple_command
+		 | pipeline '|' linebreak simple_command
+*/
+struct AstPipeline* pipeline(struct Parser* parser)
+{
+	struct AstSimpleCommand* ast_scommand = simple_command(parser);
+	if (!ast_scommand)
+	{
+		return NULL;
+	}
+
+	struct AstPipeline* ast_pipeline = calloc(1, sizeof(struct AstPipeline));
+	ast_pipeline->pipeline = create_list(free_ast_simple_command);
+	push_back(ast_pipeline->pipeline, ast_scommand);
+
+	while (parser->current_token.type == PIPE)
+	{
+		eat(parser, PIPE, get_next_token);
+		linebreak(parser);
+
+		if ((ast_scommand = simple_command(parser)) != NULL)
+		{
+			push_back(ast_pipeline->pipeline, ast_scommand);
+		}
+		else
+		{
+			free_ast_pipeline(ast_pipeline);
+			set_error(parser->error, "Syntax error: incomplete pipeline!");
+			return NULL;
+		}
+	}
+
+	return ast_pipeline;
+}
+
+/*
+linebreak:   newline_list
+		  | 'empty'
+*/
+int linebreak(struct Parser* parser)
+{
+	if (parser->current_token.type == NEWLINE)
+	{
+		return newline_list(parser);
+	}
+
+	return 1;
+}
+
+/*
+	newline_list :              NEWLINE
+				 | newline_list NEWLINE
+*/
+int newline_list(struct Parser* parser)
+{
+	if (parser->current_token.type != NEWLINE)
+	{
+		return 0;
+	}
+
+	do
+	{
+		eat(parser, NEWLINE, get_next_token);
+	} while (parser->current_token.type == NEWLINE);
+
+	return 1;
+}
+
+/*
+list : newline_list pipeline_list
+     |              pipeline_list
+*/
+struct AstPipelineList* list(struct Parser* parser)
+{
+	if (parser->current_token.type == NEWLINE)
+	{
+		newline_list(parser);
+	}
+
+	struct AstPipelineList* pipe_list = pipeline_list(parser);
+	if (!pipe_list)
+	{
+		return NULL;
+	}
+
+	return pipe_list;
+}
+
+/*
+pipeline_list : pipeline_list separator pipeline
+			  | pipeline_list separator
+			  | 		                pipeline
+*/
+struct AstPipelineList* pipeline_list(struct Parser* parser)
+{
+	struct AstPipeline* pipe = pipeline(parser);
+	if (!pipe)
+	{
+		return NULL;
+	}
+
+	struct AstPipelineList* pipe_list = malloc(sizeof(struct AstPipelineList));
+	pipe_list->pipelines = create_list(free_ast_pipeline);
+	push_back(pipe_list->pipelines, pipe);
+
+	while (parser->current_token.type == ASYNC_LIST || parser->current_token.type == SEQ_LIST || parser->current_token.type == NEWLINE)
+	{
+		pipe->mode = separator(parser);
+
+		pipe = pipeline(parser);
+		if (pipe)
+		{
+			push_back(pipe_list->pipelines, pipe);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	return pipe_list;
+}
+
+/*
+separator: separator_op linebreak
+		  | newline_list
+*/
+enum RunningMode separator(struct Parser* parser)
+{
+	enum RunningMode mode = FOREGROUND;
+
+	if (parser->current_token.type == ASYNC_LIST || parser->current_token.type == SEQ_LIST)
+	{
+		mode = separator_op(parser);
+		linebreak(parser);
+	}
+	else
+	{
+		if (!newline_list(parser))
+		{
+			mode = ERROR;
+		}
+	}
+
+	return mode;
+}
+
+/*
+separator_op: '&'
+			| ';'
+*/
+enum RunningMode separator_op(struct Parser* parser) 
+{
+	switch (parser->current_token.type)
+	{
+		case ASYNC_LIST:
+		{
+			eat(parser, ASYNC_LIST, get_next_token);
+			return BACKGROUND;
+		} break;
+		case SEQ_LIST:
+		{
+			eat(parser, SEQ_LIST, get_next_token);
+			return FOREGROUND;
+		} break;
+		default:
+		{
+			set_error(parser->error, "Syntax error: expected '&' or ';' token");
+			return ERROR;
+		} break;
+	}
+}
+
+struct AstPipelineList* parse(struct Parser* parser)
 {
 	if (parser->current_token.type == END)
 	{
 		return NULL;
 	}
 
-	struct AstPipeline* pipe = pipeline(parser);
+	struct AstPipelineList* pipe_list = list(parser);
+
+	if (parser->current_token.type == NEWLINE)
+	{
+		newline_list(parser);
+	}
 
 	if (parser->current_token.type != END)
 	{
-		set_error(parser->error, "Syntax error: incorrect pipeline!");
+		set_error(parser->error, "Syntax error: invalid token!");
 	}
 
-	return pipe;
+	return pipe_list;
 }
 
 void free_ast_simple_command(void* ast_scommand)
@@ -597,71 +776,12 @@ void free_ast_pipeline(void* ast_pipeline)
 	}
 }
 
-/*
-pipeline:                         simple_command
-		 | pipeline '|' linebreak simple_command
-*/
-struct AstPipeline* pipeline(struct Parser* parser)
+void free_ast_pipeline_list(void* ast_pipeline_list)
 {
-	struct AstSimpleCommand* ast_scommand = simple_command(parser);
-	if (!ast_scommand)
+	if (ast_pipeline_list)
 	{
-		return NULL;
+		struct AstPipelineList* pipe_list = (struct AstPipelineList*)ast_pipeline_list;
+		destroy_list(&pipe_list->pipelines);
+		free(pipe_list);
 	}
-
-	struct AstPipeline* ast_pipeline = malloc(sizeof(struct AstPipeline));
-	ast_pipeline->pipeline = create_list(free_ast_simple_command);
-	push_back(ast_pipeline->pipeline, ast_scommand);
-
-	while (parser->current_token.type == PIPE)
-	{
-		eat(parser, PIPE, get_next_token);
-		linebreak(parser);
-
-		if ((ast_scommand = simple_command(parser)) != NULL) 
-		{
-			push_back(ast_pipeline->pipeline, ast_scommand);
-		}
-		else
-		{
-			free_ast_pipeline(ast_pipeline);
-			set_error(parser->error, "Syntax error: incomplete pipeline!");
-			return NULL;
-		}
-	}
-
-	return ast_pipeline;
-}
-
-/*
-linebreak:   newline_list
-		  | 'empty'
-*/
-int linebreak(struct Parser* parser)
-{
-	if (parser->current_token.type == NEWLINE)
-	{
-		return newline_list(parser);
-	}
-
-	return 1;
-}
-
-/*
-	newline_list :              NEWLINE
-				 | newline_list NEWLINE
-*/
-int newline_list(struct Parser* parser)
-{
-	if (parser->current_token.type != NEWLINE)
-	{
-		return 0;
-	}
-
-	do
-	{
-		eat(parser, NEWLINE, get_next_token);
-	} while (parser->current_token.type == NEWLINE);
-
-	return 1;
 }

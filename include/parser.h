@@ -70,9 +70,22 @@ struct AstSimpleCommand
 	struct AstAssignmentList* assignment_list;
 };
 
+enum RunningMode // temp
+{
+	FOREGROUND,
+	ERROR,
+	BACKGROUND
+};
+
 struct AstPipeline
 {
 	struct List* pipeline; // list contains AstSimpleCommands structures or NULL
+	enum RunningMode mode;
+};
+
+struct AstPipelineList
+{
+	struct List* pipelines; // list contains AstPipeline structures or NULL
 };
 
 struct AstArithmExpr
@@ -150,8 +163,6 @@ arithm_factor:    INTEGER
 */
 struct AstArithmExpr* arithm_factor(struct Parser* parser);
 
-struct AstWord* ast_word(struct Parser* parser);
-
 // returns result of arithm_expression and calls get_next_token()
 struct AstNode* parse_arithm_expr(struct Parser* parser);
 
@@ -173,7 +184,33 @@ int linebreak(struct Parser* parser);
 */
 int newline_list(struct Parser* parser);
 
-struct AstPipeline* parse(struct Parser* parser);
+/*
+list : newline_list pipeline_list
+     |              pipeline_list
+*/
+struct AstPipelineList* list(struct Parser* parser);
+
+/*
+pipeline_list : pipeline_list separator pipeline
+			  | pipeline_list separator
+			  | 		                pipeline
+*/
+struct AstPipelineList* pipeline_list(struct Parser* parser);
+
+/*
+separator: separator_op linebreak
+	      | newline_list
+*/
+enum RunningMode separator(struct Parser* parser);
+
+/*
+separator_op: '&'
+	        | ';'
+*/
+enum RunningMode separator_op(struct Parser* parser); // return RunningMode::ERROR if parser->current_token.type != SEQ_LIST && != ASYNC_LIST
+
+struct AstPipelineList* parse(struct Parser* parser);
+struct AstWord* ast_word(struct Parser* parser);
 
 void free_ast_simple_command(void* ast_scommand); // ast_scommand is a pointer to struct AstSimpleCommand
 void free_ast_assignment_list(void* assignment_list); // assignment_list is a pointer to struct AstAssignmentList
@@ -184,6 +221,7 @@ void free_ast_assignment(void* assignment); // assignment is a pointer to struct
 void free_ast_node(void* node); // node is a pointer to struct AstNode
 void free_ast_arithm_expr(void* arithm_expr); // arithm_expr is a pointer to struct AStArithmExpr
 void free_ast_pipeline(void* ast_pipeline);
+void free_ast_pipeline_list(void* ast_pipeline_list);
 
 // get_token function is get_next_token or arithm_get_next_token
 int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*));

@@ -1,8 +1,8 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-#include "parser.h"
 #include "hashtable.h"
+#include "parser.h"
 
 #define DEFAULT_HASHTABLE_SIZE 128
 
@@ -22,6 +22,6 @@ void initialize(struct Shell* shell, char* buffer);
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value); // returns 1 if the variable already exists
 
-void execute(struct Shell* shell, struct AstPipeline* pipe);
+void execute(struct Shell* shell, struct AstPipelineList* pipe_list);
 
 #endif

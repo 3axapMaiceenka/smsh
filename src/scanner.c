@@ -142,6 +142,16 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 				token.type = PIPE;
 				running = 0;
 			} break;
+			case '&':
+			{
+				token.type = ASYNC_LIST;
+				running = 0;
+			} break;
+			case ';':
+			{
+				token.type = SEQ_LIST;
+				running = 0;
+			} break;
 			case '\n':
 			{
 				token.type = NEWLINE;
@@ -161,7 +171,8 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 			} break;
 		}
 
-		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '|' || buffer[position] == '\0')
+		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '|' || buffer[position] == '\0'
+									|| buffer[position] == ';'  || buffer[position] == '&')
 		{
 			break;
 		}
