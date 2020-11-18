@@ -70,6 +70,11 @@ struct AstSimpleCommand
 	struct AstAssignmentList* assignment_list;
 };
 
+struct AstPipeline
+{
+	struct List* pipeline; // list contains AstSimpleCommands structures or NULL
+};
+
 struct AstArithmExpr
 {
 	struct Token token;
@@ -153,18 +158,22 @@ struct AstNode* parse_arithm_expr(struct Parser* parser);
 /*
 pipeline:                         simple_command
 	     | pipeline '|' linebreak simple_command
+*/
 struct AstPipeline* pipeline(struct Parser* parser);
 
+/*
 linebreak: newline_list
 	        | 'empty'
+*/
 int linebreak(struct Parser* parser);
 
+/*
 	newline_list :              NEWLINE
 	             | newline_list NEWLINE
-int newline_list(struct Parser* parser);
 */
+int newline_list(struct Parser* parser);
 
-struct AstSimpleCommand* parse(struct Parser* parser);
+struct AstPipeline* parse(struct Parser* parser);
 
 void free_ast_simple_command(void* ast_scommand); // ast_scommand is a pointer to struct AstSimpleCommand
 void free_ast_assignment_list(void* assignment_list); // assignment_list is a pointer to struct AstAssignmentList
@@ -174,6 +183,7 @@ void free_ast_wordlist(void* wordlist); // wordlist is a pointer to struct AstWo
 void free_ast_assignment(void* assignment); // assignment is a pointer to struct AstAssignment
 void free_ast_node(void* node); // node is a pointer to struct AstNode
 void free_ast_arithm_expr(void* arithm_expr); // arithm_expr is a pointer to struct AStArithmExpr
+void free_ast_pipeline(void* ast_pipeline);
 
 // get_token function is get_next_token or arithm_get_next_token
 int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*));

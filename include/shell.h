@@ -22,6 +22,6 @@ void initialize(struct Shell* shell, char* buffer);
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value); // returns 1 if the variable already exists
 
-void execute(struct Shell* shell, struct AstSimpleCommand* command);
+void execute(struct Shell* shell, struct AstPipeline* pipe);
 
 #endif

@@ -13,6 +13,7 @@ enum TokenType
 	PARAMETER_EXPANSION,
 	INPUT_REDIRECT,
 	OUTPUT_REDIRECT,
+	PIPE,
 
 	/*those are used while reading arithmetic expression*/
 	INTEGER,

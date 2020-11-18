@@ -61,10 +61,15 @@ int handle_io_redirect(char redirect, const char* buffer, size_t* position, int 
 	return 0;
 }
 
+static void free_buffer(struct Buffer* buffer)
+{
+	free(buffer->buffer);
+	buffer->buffer = NULL;
+}
+
 static void free_token(struct Token* token)
 {
-	free(token->word.buffer);
-	token->word.buffer = NULL;
+	free_buffer(&token->word);
 	token->type = END;
 }
 
@@ -91,62 +96,72 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 
 		switch (c)
 		{
-		case '$':
-		{
-			if (!token.word.size)
+			case '$':
 			{
-				if (buffer[position] == '(' && buffer[position + 1] == '(') // $((..
+				if (!token.word.size)
 				{
-					free_token(&token);
-					*arithm_expr_beginning = 1;
-					scanner->position = position + 2;
-					return token;
-				}
+					if (buffer[position] == '(' && buffer[position + 1] == '(') // $((..
+					{
+						free_token(&token);
+						*arithm_expr_beginning = 1;
+						scanner->position = position + 2;
+						return token;
+					}
 
-				token.type = PARAMETER_EXPANSION;
-			}
-			else
+					token.type = PARAMETER_EXPANSION;
+				}
+				else
+				{
+					running = 0;
+					position--;
+				}
+			} break;
+			case '<':
 			{
-				running = 0;
-				position--;
-			}
-		} break;
-		case '<':
-		{
-			running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
-		} break;
-		case '>':
-		{
-			running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
-		} break;
-		case '=':
-		{
-			if (!contains_quotes && token.word.size && buffer[position] != ' ' && buffer[position] != '\n'
-				&& buffer[position] != '\0' && buffer[position] != '\t')
+				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
+			} break;
+			case '>':
 			{
-				token.type = NAME;
+				running = handle_io_redirect(c, buffer, &position, contains_quotes, &token);
+			} break;
+			case '=':
+			{
+				if (!contains_quotes && token.word.size && buffer[position] != ' ' && buffer[position] != '\n'
+					&& buffer[position] != '\0' && buffer[position] != '\t')
+				{
+					token.type = NAME;
+					running = 0;
+				}
+				else
+				{
+					append_char(&token.word, c);
+				}
+			} break;
+			case '|':
+			{
+				token.type = PIPE;
 				running = 0;
-			}
-			else
+			} break;
+			case '\n':
+			{
+				token.type = NEWLINE;
+				running = 0;
+			} break;
+			case 39:
+			{
+				running = handle_quotes(c, &position, buffer, &token, &contains_quotes);
+			} break;
+			case 34:
+			{
+				running = handle_quotes(c, &position, buffer, &token, &contains_quotes);
+			} break;
+			default:
 			{
 				append_char(&token.word, c);
-			}
-		} break;
-		case 39:
-		{
-			running = handle_quotes(c, &position, buffer, &token, &contains_quotes);
-		} break;
-		case 34:
-		{
-			running = handle_quotes(c, &position, buffer, &token, &contains_quotes);
-		} break;
-		default:
-		{
-			append_char(&token.word, c);
-		} break;
+			} break;
 		}
 
-		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '\0')
+		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '|' || buffer[position] == '\0')
 		{
 			break;
 		}
@@ -158,7 +173,7 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 	}
 	else
 	{
-		free_token(&token);
+		free_buffer(&token.word);
 	}
 
 	scanner->position = position;

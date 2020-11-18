@@ -436,27 +436,34 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 	return node;
 }
 
-struct AstSimpleCommand* parse(struct Parser* parser)
+struct AstPipeline* parse(struct Parser* parser)
 {
 	if (parser->current_token.type == END)
 	{
 		return NULL;
 	}
 
-	return simple_command(parser);
+	struct AstPipeline* pipe = pipeline(parser);
+
+	if (parser->current_token.type != END)
+	{
+		set_error(parser->error, "Syntax error: incorrect pipeline!");
+	}
+
+	return pipe;
 }
 
 void free_ast_simple_command(void* ast_scommand)
 {
 	if (ast_scommand)
 	{
-		struct AstSimpleCommand* ast_command = (struct AstSimpleCommand*)ast_scommand;
-		free_ast_assignment_list(ast_command->assignment_list);
-		free_ast_io_redirect(ast_command->input_redirect);
-		free_ast_io_redirect(ast_command->output_redirect);
-		free_ast_wordlist(ast_command->command_args);
-		free_ast_word(ast_command->command_name);
-		free(ast_command);
+		struct AstSimpleCommand* command = (struct AstSimpleCommand*)ast_scommand;
+		free_ast_assignment_list(command->assignment_list);
+		free_ast_io_redirect(command->input_redirect);
+		free_ast_io_redirect(command->output_redirect);
+		free_ast_wordlist(command->command_args);
+		free_ast_word(command->command_name);
+		free(command);
 	}
 }
 
@@ -474,11 +481,11 @@ void free_ast_assignment(void* assignment)
 {
 	if (assignment)
 	{
-		struct AstAssignment* ast_assignment = (struct AstAssignment*)assignment;
-		free_ast_node(ast_assignment->expression);
-		free(ast_assignment->variable->word.buffer);
-		free(ast_assignment->variable);
-		free(ast_assignment);
+		struct AstAssignment* a = (struct AstAssignment*)assignment;
+		free_ast_node(a->expression);
+		free(a->variable->word.buffer);
+		free(a->variable);
+		free(a);
 	}
 }
 
@@ -506,6 +513,10 @@ void free_ast_node(void* node)
 			{
 				free_ast_assignment(n->actual_data);
 			} break;
+			case AST_ARITHM_EXPR:
+			{
+				free_ast_arithm_expr(n->actual_data);
+			} break;
 			default:
 			{
 				free(n->actual_data);
@@ -532,7 +543,12 @@ void free_ast_word(void* word)
 	if (word)
 	{
 		struct AstWord* w = (struct AstWord*)word;
-		free(w->word.word.buffer);
+
+		if (w->word.word.buffer)
+		{
+			free(w->word.word.buffer);
+		}
+
 		free(w);
 	}
 }
@@ -551,22 +567,101 @@ void free_ast_arithm_expr(void* arithm_expr)
 {
 	if (arithm_expr)
 	{
-		struct AstArithmExpr* a = (struct AstArithmExpr*)arithm_expr;
-		
-		if (a->left)
+		struct AstArithmExpr* expr = (struct AstArithmExpr*)arithm_expr;
+
+		if (expr->left)
 		{
-			free_ast_arithm_expr(a->left);
+			free_ast_arithm_expr(expr->left);
 		}
-		if (a->right)
-		{	
-			free_ast_arithm_expr(a->right);
+		if (expr->right)
+		{
+			free_ast_arithm_expr(expr->right);
 		}
 
-		if (a->token.word.buffer)
+		if (expr->token.word.buffer)
 		{
-			free(a->token.word.buffer);
+			free(expr->token.word.buffer);
 		}
 
-		free(a);
+		free(expr);
 	}
+}
+
+void free_ast_pipeline(void* ast_pipeline)
+{
+	if (ast_pipeline)
+	{
+		struct AstPipeline* pipe = (struct AstPipeline*)ast_pipeline;
+		destroy_list(&pipe->pipeline);
+		free(pipe);
+	}
+}
+
+/*
+pipeline:                         simple_command
+		 | pipeline '|' linebreak simple_command
+*/
+struct AstPipeline* pipeline(struct Parser* parser)
+{
+	struct AstSimpleCommand* ast_scommand = simple_command(parser);
+	if (!ast_scommand)
+	{
+		return NULL;
+	}
+
+	struct AstPipeline* ast_pipeline = malloc(sizeof(struct AstPipeline));
+	ast_pipeline->pipeline = create_list(free_ast_simple_command);
+	push_back(ast_pipeline->pipeline, ast_scommand);
+
+	while (parser->current_token.type == PIPE)
+	{
+		eat(parser, PIPE, get_next_token);
+		linebreak(parser);
+
+		if ((ast_scommand = simple_command(parser)) != NULL) 
+		{
+			push_back(ast_pipeline->pipeline, ast_scommand);
+		}
+		else
+		{
+			free_ast_pipeline(ast_pipeline);
+			set_error(parser->error, "Syntax error: incomplete pipeline!");
+			return NULL;
+		}
+	}
+
+	return ast_pipeline;
+}
+
+/*
+linebreak:   newline_list
+		  | 'empty'
+*/
+int linebreak(struct Parser* parser)
+{
+	if (parser->current_token.type == NEWLINE)
+	{
+		return newline_list(parser);
+	}
+
+	return 1;
+}
+
+/*
+	newline_list :              NEWLINE
+				 | newline_list NEWLINE
+*/
+int newline_list(struct Parser* parser)
+{
+	if (parser->current_token.type != NEWLINE)
+	{
+		return 0;
+	}
+
+	do
+	{
+		eat(parser, NEWLINE, get_next_token);
+	} while (parser->current_token.type == NEWLINE);
+
+	return 1;
 }

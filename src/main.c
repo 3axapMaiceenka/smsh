@@ -16,8 +16,8 @@ void _test_(const char* string)
 
 	initialize(shell, test);
 
-	struct AstSimpleCommand* sc = parse(shell->parser);
-	execute(shell, sc);
+	struct AstPipeline* pipe = parse(shell->parser);
+	execute(shell, pipe);
 
 	stop(shell);
 
@@ -107,9 +107,18 @@ int main()
 	//_test_("var=$((4/2 -     1   + (-6 / +- 5))) cmd_name $((3- 2+ 1- (-(-(-(4)))) * 3 / 2))");
 
 	/*Test7*/
-	_test_("var=$((2+3-1)) cmd_name $((1 + $var - 5))");
-	_test_("var=$((2+3-1)) var=$(($var)) cmd_name $((1 + $var * $var -(-(($var)))))");
-	_test_("var=$((2+3-1)) var0=$((1 + $var - -1 * $var)) cmd_name $((1 + $var - 5 + $var0))");
+	//_test_("var=$((2+3-1)) cmd_name $((1 + $var - 5))");
+	//_test_("var=$((2+3-1)) var=$(($var)) cmd_name $((1 + $var * $var -(-(($var)))))");
+	//_test_("var=$((2+3-1)) var0=$((1 + $var - -1 * $var)) cmd_name $((1 + $var - 5 + $var0))");
+
+	/*Test8*/
+	_test_("cmd");
+	_test_("cmd1| cmd2");
+	_test_("cmd1 |cmd2");
+	_test_("cmd1 arg1|cmd2 arg2");
+	_test_("var=$((2 + 3)) cmd_name arg1 $var | \n var2=3 cmd_name2 arg arg2 arg3 $var2 $var");
+	_test_("cmd1|cmd2| cmd3 |   cmd4   |cmd5 | \n\n\n\n\n cmd6 |cmd7 | \n cmd8 |\t\n cmd9");
+	_test_("cmd_name \n | cmd_name2");
 
 	return 0;
 }
