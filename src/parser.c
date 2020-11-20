@@ -30,6 +30,14 @@ struct AstWord* ast_word(struct Parser* parser)
 	return word;
 }
 
+static struct AstNode* create_ast_node(void* actual_data, enum AstNodeType node_type)
+{
+	struct AstNode* node = malloc(sizeof(struct AstNode));
+	node->actual_data = actual_data;
+	node->node_type = node_type;
+	return node;
+}
+
 /*
 cmd_prefix:				  NAME'='WORD
 			 |			  NAME'='PARAMETER_EXPANSION
@@ -38,16 +46,14 @@ cmd_prefix:				  NAME'='WORD
 			 | cmd_prefix NAME'='PARAMETER_EXPANSION
 			 | cmd_prefix NAME'='arithm_expression
 */
-struct AstAssignmentList* cmd_prefix(struct Parser* parser)
+AssignmentsList* cmd_prefix(struct Parser* parser)
 {
 	if (parser->current_token.type != NAME)
 	{
 		return NULL;
 	}
 
-	struct AstAssignmentList* assignment_list = calloc(1, sizeof(struct AstAssignmentList));
-	assignment_list->assignments = create_list(&free_ast_assignment);
-
+	AssignmentsList* assignment_list = create_list(&free_ast_assignment);
 	struct AstAssignment* assignment = NULL;
 	struct Token token;
 
@@ -66,9 +72,7 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 		{
 			if (parser->current_token.type == WORD || parser->current_token.type == PARAMETER_EXPANSION)
 			{
-				node = malloc(sizeof(struct AstNode));
-				node->node_type = AST_WORD;
-				node->actual_data = ast_word(parser); // calls eat()
+				node = create_ast_node(ast_word(parser), AST_WORD);
 			}
 		}
 
@@ -78,11 +82,11 @@ struct AstAssignmentList* cmd_prefix(struct Parser* parser)
 			assignment->variable = malloc(sizeof(struct Token));
 			copy_token(assignment->variable, &token);
 			assignment->expression = node;
-			push_back(assignment_list->assignments, assignment);
+			push_back(assignment_list, assignment);
 		}
 		else
 		{
-			destroy_list(&assignment_list->assignments);
+			destroy_list(&assignment_list);
 			free(assignment_list);
 
 			if (!parser->error->error)
@@ -157,9 +161,7 @@ struct AstNode* parse_arithm_expr(struct Parser* parser)
 		return NULL;
 	}
 
-	struct AstNode* node = malloc(sizeof(struct AstNode));
-	node->actual_data = arithm_expr;
-	node->node_type = AST_ARITHM_EXPR;
+	struct AstNode* node = create_ast_node(arithm_expr, AST_ARITHM_EXPR);
 
 	parser->parsing_arithm_expr = 0;
 	parser->current_token = get_next_token(parser->scanner, &parser->parsing_arithm_expr);
@@ -220,9 +222,7 @@ struct CmdArgs* cmd_suffix(struct Parser* parser)
 
 				if (arg)
 				{
-					node = malloc(sizeof(struct AstNode));
-					node->actual_data = arg;
-					node->node_type = AST_WORD;
+					node = create_ast_node(arg, AST_WORD);
 				}				
 			}
 
@@ -230,11 +230,10 @@ struct CmdArgs* cmd_suffix(struct Parser* parser)
 			{
 				if (!cmd_args->command_args)
 				{
-					cmd_args->command_args = calloc(1, sizeof(struct AstWordlist));
-					cmd_args->command_args->wordlist = create_list(&free_ast_node);
+					cmd_args->command_args = create_list(&free_ast_node);
 				}
 
-				push_back(cmd_args->command_args->wordlist, node);
+				push_back(cmd_args->command_args, node);
 			}
 			else
 			{
@@ -269,7 +268,7 @@ struct AstSimpleCommand* simple_command(struct Parser* parser)
 {
 	struct AstSimpleCommand* ast_scommand = NULL;
 
-	struct AstAssignmentList* assignment_list = cmd_prefix(parser);
+	AssignmentsList* assignment_list = cmd_prefix(parser);
 	if (assignment_list)
 	{
 		ast_scommand = calloc(1, sizeof(struct AstSimpleCommand));
@@ -438,7 +437,7 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 
 /*
 pipeline:                         simple_command
-		 | pipeline '|' linebreak simple_command
+         | pipeline '|' linebreak simple_command
 */
 struct AstPipeline* pipeline(struct Parser* parser)
 {
@@ -509,14 +508,14 @@ int newline_list(struct Parser* parser)
 list : newline_list pipeline_list
      |              pipeline_list
 */
-struct AstPipelineList* list(struct Parser* parser)
+PipelinesList* list(struct Parser* parser)
 {
 	if (parser->current_token.type == NEWLINE)
 	{
 		newline_list(parser);
 	}
 
-	struct AstPipelineList* pipe_list = pipeline_list(parser);
+	PipelinesList* pipe_list = pipeline_list(parser);
 	if (!pipe_list)
 	{
 		return NULL;
@@ -530,7 +529,7 @@ pipeline_list : pipeline_list separator pipeline
 			  | pipeline_list separator
 			  | 		                pipeline
 */
-struct AstPipelineList* pipeline_list(struct Parser* parser)
+PipelinesList* pipeline_list(struct Parser* parser)
 {
 	struct AstPipeline* pipe = pipeline(parser);
 	if (!pipe)
@@ -538,9 +537,8 @@ struct AstPipelineList* pipeline_list(struct Parser* parser)
 		return NULL;
 	}
 
-	struct AstPipelineList* pipe_list = malloc(sizeof(struct AstPipelineList));
-	pipe_list->pipelines = create_list(free_ast_pipeline);
-	push_back(pipe_list->pipelines, pipe);
+	PipelinesList* pipe_list = create_list(free_ast_pipeline);
+	push_back(pipe_list, pipe);
 
 	while (parser->current_token.type == ASYNC_LIST || parser->current_token.type == SEQ_LIST || parser->current_token.type == NEWLINE)
 	{
@@ -549,7 +547,7 @@ struct AstPipelineList* pipeline_list(struct Parser* parser)
 		pipe = pipeline(parser);
 		if (pipe)
 		{
-			push_back(pipe_list->pipelines, pipe);
+			push_back(pipe_list, pipe);
 		}
 		else
 		{
@@ -585,8 +583,8 @@ enum RunningMode separator(struct Parser* parser)
 }
 
 /*
-separator_op: '&'
-			| ';'
+separator_op: ASYNC_LIST
+			| SEQ_LIST
 */
 enum RunningMode separator_op(struct Parser* parser) 
 {
@@ -610,26 +608,198 @@ enum RunningMode separator_op(struct Parser* parser)
 	}
 }
 
-struct AstPipelineList* parse(struct Parser* parser)
+/*
+compound_list :              term
+			  | newline_list term
+			  |              term newline_list
+			  | newline_list term newline_list
+*/
+CommandsList* compoud_list(struct Parser* parser)
+{
+	newline_list(parser); // just returns 0 if no newlines
+
+	CommandsList* commands = term(parser);
+
+	if (commands)
+	{
+		newline_list(parser);
+	}
+
+	return commands;
+}
+
+/*
+term : cc_list term
+	 | list    term
+	 | list
+	 | cc_list
+*/
+CommandsList* term(struct Parser* parser)
+{
+	CommandsList* commands_list = create_list(free_ast_node);
+	CompoundCommandsList* compound_commands = NULL;
+	PipelinesList* pipes = NULL;
+
+	do
+	{
+		pipes = list(parser);
+
+		if (pipes)
+		{
+			push_back(commands_list, create_ast_node(pipes, AST_PIPELINE_LIST));
+		}
+
+		compound_commands = cc_list(parser);
+
+		if (compound_commands)
+		{
+			push_back(commands_list, create_ast_node(compound_commands, AST_COMPOUND_COMMANDS_LIST));
+		}
+	} while (compound_commands);
+
+	if (!commands_list->head)
+	{
+		destroy_list(&commands_list);
+	}
+
+	return commands_list;
+}
+
+/*
+cc_list : cc_list newline_list compound_command
+		| 		               compound_command
+		|         newline_list compound_command
+*/
+CompoundCommandsList* cc_list(struct Parser* parser)
+{
+	newline_list(parser); // returns 0 if no newlines
+
+	struct AstNode* node = compound_command(parser);
+	if (!node)
+	{
+		return NULL;
+	}
+
+	CompoundCommandsList* commands_list = create_list(free_ast_node);
+	push_back(commands_list, node);
+
+	while (1)
+	{
+		newline_list(parser);
+		node = compound_command(parser);
+
+		if (node)
+		{
+			push_back(commands_list, node);
+		}
+		else
+		{
+			break;
+		}	
+	}
+
+	return commands_list;
+}
+
+/*
+compound_command: for_clause
+				| if_clause
+				| while_clause
+For now:
+compouns_command: if_caluse
+*/
+struct AstNode* compound_command(struct Parser* parser)
+{
+	return if_clause(parser); //TODO: add for_clause and while_clause
+}
+
+/*
+if_clause : If compound_list Then compound_list else_part Fi
+		  | If compound_list Then compound_list           Fi
+*/
+struct AstNode* if_clause(struct Parser* parser)
+{
+	if (!eat(parser, IF, get_next_token))
+	{
+		return NULL;
+	}
+
+	struct AstIf* ast_if = calloc(1, sizeof(struct AstIf));
+	ast_if->condition = compoud_list(parser);
+
+	if (!ast_if->condition)
+	{
+		free(ast_if);
+		set_error(parser->error, "Syntax error: invalid if statement!");
+		return NULL;
+	}
+
+	if (!eat(parser, THEN, get_next_token))
+	{
+		destroy_list(&ast_if->condition);
+		free(ast_if);
+		set_error(parser->error, "Syntax error: expected 'then' token in 'if' statement!");
+		return NULL;
+	}
+
+	ast_if->if_part = compoud_list(parser);
+	if (!ast_if->if_part)
+	{
+		if (!parser->error->error)
+		{
+			destroy_list(&ast_if->condition);
+			free(ast_if);
+			set_error(parser->error, "Syntax error: invalid if statement!");
+			return NULL;
+		}
+	}
+
+	ast_if->else_part = else_part(parser);
+	
+	if (!eat(parser, FI, get_next_token))
+	{
+		if (!parser->error->error)
+		{
+			destroy_list(&ast_if->condition);
+			destroy_list(&ast_if->if_part);	
+			destroy_list(&ast_if->else_part);
+			free(ast_if);
+			set_error(parser->error, "Syntax error: expected 'fi' token in 'if' statement!");
+			return NULL;
+		}
+	}
+
+	return create_ast_node(ast_if, AST_IF);
+}
+
+//else_part: Else compound_list
+CommandsList* else_part(struct Parser* parser)
+{
+	if (!eat(parser, ELSE, get_next_token))
+	{
+		return NULL;
+	}
+
+	return compoud_list(parser);
+}
+
+CommandsList* parse(struct Parser* parser)
 {
 	if (parser->current_token.type == END)
 	{
 		return NULL;
 	}
 
-	struct AstPipelineList* pipe_list = list(parser);
+	CommandsList* program = compoud_list(parser);
 
-	if (parser->current_token.type == NEWLINE)
-	{
-		newline_list(parser);
-	}
+	//newline_list(parser); ????
 
 	if (parser->current_token.type != END)
 	{
 		set_error(parser->error, "Syntax error: invalid token!");
 	}
 
-	return pipe_list;
+	return program;
 }
 
 void free_ast_simple_command(void* ast_scommand)
@@ -637,22 +807,12 @@ void free_ast_simple_command(void* ast_scommand)
 	if (ast_scommand)
 	{
 		struct AstSimpleCommand* command = (struct AstSimpleCommand*)ast_scommand;
-		free_ast_assignment_list(command->assignment_list);
+		destroy_list(&command->assignment_list);
+		destroy_list(&command->command_args);
+		free_ast_word(command->command_name);
 		free_ast_io_redirect(command->input_redirect);
 		free_ast_io_redirect(command->output_redirect);
-		free_ast_wordlist(command->command_args);
-		free_ast_word(command->command_name);
 		free(command);
-	}
-}
-
-void free_ast_assignment_list(void* assignment_list)
-{
-	if (assignment_list)
-	{
-		struct AstAssignmentList* list = (struct AstAssignmentList*)assignment_list;
-		destroy_list(&list->assignments);
-		free(list);
 	}
 }
 
@@ -680,21 +840,29 @@ void free_ast_node(void* node)
 			{
 				free_ast_word(n->actual_data);
 			} break;
-			case AST_WORDLIST:
+			case AST_IF:
 			{
-				free_ast_wordlist(n->actual_data);
+				free_ast_if(n->actual_data);
 			} break;
-			case AST_SIMPLE_COMMAND:
+			case AST_FOR:
 			{
-				free_ast_simple_command(n->actual_data);
+				// free ast for
 			} break;
-			case AST_ASSIGNMENT:
+			case AST_WHILE:
 			{
-				free_ast_assignment(n->actual_data);
+				// free ast while
 			} break;
 			case AST_ARITHM_EXPR:
 			{
 				free_ast_arithm_expr(n->actual_data);
+			} break;
+			case AST_PIPELINE_LIST:
+			{
+				destroy_list((struct List**)&n->actual_data);
+			} break;
+			case AST_COMPOUND_COMMANDS_LIST:
+			{
+				destroy_list((struct List**)&n->actual_data);
 			} break;
 			default:
 			{
@@ -732,16 +900,6 @@ void free_ast_word(void* word)
 	}
 }
 
-void free_ast_wordlist(void* wordlist)
-{
-	if (wordlist)
-	{
-		struct AstWordlist* list = (struct AstWordlist*)wordlist;
-		destroy_list(&list->wordlist);
-		free(list);
-	}
-}
-
 void free_ast_arithm_expr(void* arithm_expr)
 {
 	if (arithm_expr)
@@ -776,12 +934,13 @@ void free_ast_pipeline(void* ast_pipeline)
 	}
 }
 
-void free_ast_pipeline_list(void* ast_pipeline_list)
+void free_ast_if(void* ast_if)
 {
-	if (ast_pipeline_list)
+	if (ast_if)
 	{
-		struct AstPipelineList* pipe_list = (struct AstPipelineList*)ast_pipeline_list;
-		destroy_list(&pipe_list->pipelines);
-		free(pipe_list);
+		struct AstIf* if_statement = (struct AstIf*)ast_if;
+		destroy_list(&if_statement->condition);
+		destroy_list(&if_statement->if_part);
+		destroy_list(&if_statement->else_part);
 	}
 }

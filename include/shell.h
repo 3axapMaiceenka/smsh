@@ -12,6 +12,7 @@ struct Shell
 	struct Scanner* scanner;
 	struct Hashtable* variables;
 	struct Error* execution_error;
+	CommandsList* program;
 };
 
 struct Shell* start();
@@ -22,6 +23,6 @@ void initialize(struct Shell* shell, char* buffer);
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value); // returns 1 if the variable already exists
 
-void execute(struct Shell* shell, struct AstPipelineList* pipe_list);
+void execute(struct Shell* shell, CommandsList* program);
 
 #endif

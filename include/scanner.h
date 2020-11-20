@@ -16,8 +16,17 @@ enum TokenType
 	PIPE, // '|'
 	ASYNC_LIST, // '&'
 	SEQ_LIST, // ';'
+	IF,
+	ELSE,
+	FI,
+	THEN,
+	FOR,
+	WHILE,
+	DO,
+	DONE,
+	IN,
 
-	/*these are used while reading arithmetic expression*/
+	/*these are used while reading an arithmetic expression*/
 	INTEGER,
 	PLUS,
 	MINUS,

@@ -1,4 +1,41 @@
 #include "scanner.h"
+#include <string.h>
+
+//TODO: change
+static const char* Keywords[] = { "if", "else", "fi", "then", "while", "do", "done", "for", "in" };
+static const enum TokenType Types[] = { IF, ELSE, FI, THEN, WHILE, DO, DONE, FOR, IN }; // temp
+
+static void free_buffer(struct Buffer* buffer)
+{
+	free(buffer->buffer);
+	buffer->capacity = 0;
+	buffer->size = 0;
+	buffer->buffer = NULL;
+}
+
+static void is_keyword(struct Token* token) // temp
+{
+	if (!token->word.buffer)
+	{
+		return;
+	}
+
+	for (int i = 0; i < (sizeof(Keywords) / sizeof(char*)); i++)
+	{
+		if (!strcmp(Keywords[i], token->word.buffer))
+		{
+			free_buffer(&token->word);
+			token->type = Types[i];
+			return;
+		}
+	}
+}
+
+static void free_token(struct Token* token)
+{
+	free_buffer(&token->word);
+	token->type = END;
+}
 
 void init_buffer(struct Buffer* buffer)
 {
@@ -59,18 +96,6 @@ int handle_io_redirect(char redirect, const char* buffer, size_t* position, int 
 	}
 
 	return 0;
-}
-
-static void free_buffer(struct Buffer* buffer)
-{
-	free(buffer->buffer);
-	buffer->buffer = NULL;
-}
-
-static void free_token(struct Token* token)
-{
-	free_buffer(&token->word);
-	token->type = END;
 }
 
 struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
@@ -181,6 +206,11 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 	if (token.type == WORD || token.type == NAME || token.type == PARAMETER_EXPANSION) // if token.type == END then error occurred during handling quotes
 	{
 		append_char(&token.word, '\0');
+
+		if (!contains_quotes)
+		{
+			is_keyword(&token); // change token.type if keyword
+		}
 	}
 	else
 	{

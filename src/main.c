@@ -11,14 +11,12 @@ void _test_(const char* string)
 {
 	struct Shell* shell = start();
 
-	fprintf(stdout, "Input: %s\n", string);
+	fprintf(stdout, "Input:\n%s\n", string);
 	char* test = copy_string(string);
 
 	initialize(shell, test);
-
-	struct AstPipelineList* pipe_list = parse(shell->parser);
-	execute(shell, pipe_list);
-
+	shell->program = parse(shell->parser);
+	execute(shell, shell->program);
 	stop(shell);
 
 	free(test);
@@ -121,20 +119,27 @@ int main()
 	//_test_("cmd_name \n | cmd_name2");
 
 	/*Test9*/
-	_test_("cmd");
-	_test_("cmd\n");
-	_test_("\ncmd\n");
-	_test_("cmd1 \n cmd2");
-	_test_("cmd1 | cmd2\n cmd3 \n cmd4");
-	_test_("var=$((2+1)) cmd_name >output.txt $var <input.txt | cmd1 arg1 arg2 arg3\n cmd2 $var >output.txt |test\n cmd\n");
-	_test_("cmd1 & cmd2");
-	_test_("cmd1;cmd2");
-	_test_("cmd1& cmd2;");
-	_test_("cmd1; cmd2;");
-	_test_("cmd1 | cmd2& cmd3;cmd4");
-	_test_("var=0\nvar0=1\ncmd1 arg1 arg2 $var | cmd2 $var0\nvar=$var0\ncmd3|cmd4 &\n");
-	_test_("cmd&\ncmd0;");
-	_test_("cmd&cmd2;cmd3;cm4;cmd5 | cmd6;cm7&");
+	//_test_("cmd");
+	//_test_("cmd\n");
+	//_test_("\ncmd\n");
+	//_test_("cmd1 \n cmd2");
+	//_test_("cmd1 | cmd2\n cmd3 \n cmd4");
+	//_test_("var=$((2+1)) cmd_name >output.txt $var <input.txt | cmd1 arg1 arg2 arg3\n cmd2 $var >output.txt |test\n cmd\n");
+	//_test_("cmd1 & cmd2");
+	//_test_("cmd1;cmd2");
+	//_test_("cmd1& cmd2;");
+	//_test_("cmd1; cmd2;");
+	//_test_("cmd1 | cmd2& cmd3;cmd4");
+	//_test_("var=0\nvar0=1\ncmd1 arg1 arg2 $var | cmd2 $var0\nvar=$var0\ncmd3|cmd4 &\n");
+	//_test_("cmd&\ncmd0;");
+	//_test_("cmd&cmd2;cmd3;cm4;cmd5 | cmd6;cm7&");
+
+	/*Test10*/
+	_test_("if cmd1\nthen\n\tcmd2\nfi");
+	_test_("if cmd1 then\ncmd2\nelse\ncmd3\nfi");
+	_test_("var=$((2+1*3))\ncmd1>output.txt $var\n\nif cmd0\nthen\n\tcmd2\nfi\nvar0=$var\ncmd_name arg arg0\nif test\nthen\n\tcmd392 arg arg\nelse\ncmd <input.txt\nfi\n");
+	_test_("if a\nthen\n\tif b\n\tthen\n\tcmd\n\tfi\nelse\ncmd2\nfi\n");
+	_test_("cmd1 arg1 >output.txt | cmd2\n\nif test\nthen\n\tcmd0|cmd1\n\tif a\n\tthen\n\t\tcmd|cmd2\n\tfi\nelse\n\tcmd & cmd;\nfi");
 
 	return 0;
 }

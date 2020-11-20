@@ -15,10 +15,12 @@ struct Parser
 enum AstNodeType
 {
 	AST_WORD,
-	AST_WORDLIST,
-	AST_SIMPLE_COMMAND,
-	AST_ASSIGNMENT,
-	AST_ARITHM_EXPR
+	AST_ARITHM_EXPR,
+	AST_IF,
+	AST_FOR,
+	AST_WHILE,
+	AST_PIPELINE_LIST,
+	AST_COMPOUND_COMMANDS_LIST
 };
 
 struct AstNode
@@ -32,20 +34,21 @@ struct AstWord
 	struct Token word; // word.type is WORD or PARAMETER_EXPANSION
 };
 
-struct AstWordlist
-{
-	struct List* wordlist; // list contains AstNode structures or NULL
-};
+/*
+	Wordlist             contains AstNode structures,
+	AssignmentsList      contains AstAssignment structures,
+	PipelinesList        contains AstPipelineStructures ,
+	SimpleCommndsList    contains AstSimpleCommandStructures,
+	CompoundCommandsList contains AstNode structures,
+	CommandsList         contains AstNode structures
+	See create_list() and destroy_list() functions in list.h
+*/
+typedef struct List Wordlist, AssignmentsList, PipelinesList, SimpleCommandsList, CompoundCommandsList, CommandsList;
 
 struct AstAssignment
 {
 	struct Token* variable; // variable->type == NAME
 	struct AstNode* expression; // expresision->node_type is AST_WORD or AST_ARITHM_EXPR
-};
-
-struct AstAssignmentList
-{
-	struct List* assignments; // list contains AstAssigment structures or NULL
 };
 
 struct AstIORedirect
@@ -56,36 +59,31 @@ struct AstIORedirect
 
 struct CmdArgs
 {
-	struct AstWordlist* command_args;
+	Wordlist* command_args;
 	struct AstIORedirect* input_redirect;
 	struct AstIORedirect* output_redirect;
 };
 
 struct AstSimpleCommand
 {
+	Wordlist* command_args;
+	AssignmentsList* assignment_list;
 	struct AstWord* command_name;
-	struct AstWordlist* command_args;
 	struct AstIORedirect* input_redirect;
 	struct AstIORedirect* output_redirect;
-	struct AstAssignmentList* assignment_list;
 };
 
 enum RunningMode // temp
 {
 	FOREGROUND,
-	ERROR,
-	BACKGROUND
+	BACKGROUND,
+	ERROR
 };
 
 struct AstPipeline
 {
-	struct List* pipeline; // list contains AstSimpleCommands structures or NULL
+	SimpleCommandsList* pipeline; // list contains AstSimpleCommands structures or NULL
 	enum RunningMode mode;
-};
-
-struct AstPipelineList
-{
-	struct List* pipelines; // list contains AstPipeline structures or NULL
 };
 
 struct AstArithmExpr
@@ -95,9 +93,16 @@ struct AstArithmExpr
 	struct AstArithmExpr* right;
 };
 
+struct AstIf
+{
+	CommandsList* condition;
+	CommandsList* if_part;
+	CommandsList* else_part; // can be NULL
+};
+
 /*
-io_redirect:   '<' filename
-			 | '>' filename
+io_redirect:   INPUT_REDIRECT  filename
+			 | OUTPUT_REDIRECT filename
 */
 struct AstIORedirect* io_redirect(struct Parser* parser);
 
@@ -129,7 +134,7 @@ cmd_prefix:				  NAME'='WORD
 			 | cmd_prefix NAME'='PARAMETER_EXPANSION
 			 | cmd_prefix NAME'='arithm_expression
 */
-struct AstAssignmentList* cmd_prefix(struct Parser* parser);
+AssignmentsList* cmd_prefix(struct Parser* parser);
 
 /*
 simple_command:   cmd_prefix cmd_name cmd_suffix
@@ -163,9 +168,6 @@ arithm_factor:    INTEGER
 */
 struct AstArithmExpr* arithm_factor(struct Parser* parser);
 
-// returns result of arithm_expression and calls get_next_token()
-struct AstNode* parse_arithm_expr(struct Parser* parser);
-
 /*
 pipeline:                         simple_command
 	     | pipeline '|' linebreak simple_command
@@ -174,7 +176,7 @@ struct AstPipeline* pipeline(struct Parser* parser);
 
 /*
 linebreak: newline_list
-	        | 'empty'
+	       | 'empty'
 */
 int linebreak(struct Parser* parser);
 
@@ -186,16 +188,16 @@ int newline_list(struct Parser* parser);
 
 /*
 list : newline_list pipeline_list
-     |              pipeline_list
+	 |              pipeline_list
 */
-struct AstPipelineList* list(struct Parser* parser);
+PipelinesList* list(struct Parser* parser);
 
 /*
 pipeline_list : pipeline_list separator pipeline
 			  | pipeline_list separator
 			  | 		                pipeline
 */
-struct AstPipelineList* pipeline_list(struct Parser* parser);
+PipelinesList* pipeline_list(struct Parser* parser);
 
 /*
 separator: separator_op linebreak
@@ -204,26 +206,69 @@ separator: separator_op linebreak
 enum RunningMode separator(struct Parser* parser);
 
 /*
-separator_op: '&'
-	        | ';'
+separator_op: ASYNC_LIST
+	        | SEQ_LIST
 */
 enum RunningMode separator_op(struct Parser* parser); // return RunningMode::ERROR if parser->current_token.type != SEQ_LIST && != ASYNC_LIST
 
-struct AstPipelineList* parse(struct Parser* parser);
+/*
+compound_list :              term
+			  | newline_list term
+			  |              term newline_list
+			  | newline_list term newline_list
+*/
+CommandsList* compoud_list(struct Parser* parser);
+
+/*
+term : cc_list term
+	 | list    term
+	 | list
+	 | cc_list
+*/
+CommandsList* term(struct Parser* parser);
+
+/*
+cc_list : cc_list newline_list compound_command
+	    | 		               compound_command
+		|         newline_list compound_command
+*/
+CompoundCommandsList* cc_list(struct Parser* parser);
+
+/*
+compound_command: for_clause
+	            | if_clause
+	            | while_clause
+For now:
+compouns_command: if_caluse
+*/
+struct AstNode* compound_command(struct Parser* parser);
+
+/*
+if_clause : If compound_list Then compound_list else_part Fi
+	      | If compound_list Then compound_list           Fi
+*/
+struct AstNode* if_clause(struct Parser* parser);
+
+//else_part: Else compound_list
+CommandsList* else_part(struct Parser* parser);
+
+
+CommandsList* parse(struct Parser* parser);
 struct AstWord* ast_word(struct Parser* parser);
 
-void free_ast_simple_command(void* ast_scommand); // ast_scommand is a pointer to struct AstSimpleCommand
-void free_ast_assignment_list(void* assignment_list); // assignment_list is a pointer to struct AstAssignmentList
-void free_ast_io_redirect(void* io_redir); // io_redir is a pointer to struct AstIORedirect
-void free_ast_word(void* word); // word is a pointer to struct AstWord
-void free_ast_wordlist(void* wordlist); // wordlist is a pointer to struct AstWordlist
-void free_ast_assignment(void* assignment); // assignment is a pointer to struct AstAssignment
-void free_ast_node(void* node); // node is a pointer to struct AstNode
-void free_ast_arithm_expr(void* arithm_expr); // arithm_expr is a pointer to struct AStArithmExpr
-void free_ast_pipeline(void* ast_pipeline);
-void free_ast_pipeline_list(void* ast_pipeline_list);
+// returns result of arithm_expression and calls get_next_token()
+struct AstNode* parse_arithm_expr(struct Parser* parser);
 
 // get_token function is get_next_token or arithm_get_next_token
 int eat(struct Parser* parser, enum TokenType expected, struct Token(*get_token)(struct Scanner*, int*));
+
+void free_ast_simple_command(void* ast_scommand);
+void free_ast_io_redirect(void* io_redir);
+void free_ast_word(void* word);
+void free_ast_assignment(void* assignment);
+void free_ast_node(void* node);
+void free_ast_arithm_expr(void* arithm_expr);
+void free_ast_pipeline(void* ast_pipeline);
+void free_ast_if(void* ast_if);
 
 #endif
