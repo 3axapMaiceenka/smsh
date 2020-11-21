@@ -135,11 +135,21 @@ int main()
 	//_test_("cmd&cmd2;cmd3;cm4;cmd5 | cmd6;cm7&");
 
 	/*Test10*/
-	_test_("if cmd1\nthen\n\tcmd2\nfi");
-	_test_("if cmd1 then\ncmd2\nelse\ncmd3\nfi");
-	_test_("var=$((2+1*3))\ncmd1>output.txt $var\n\nif cmd0\nthen\n\tcmd2\nfi\nvar0=$var\ncmd_name arg arg0\nif test\nthen\n\tcmd392 arg arg\nelse\ncmd <input.txt\nfi\n");
-	_test_("if a\nthen\n\tif b\n\tthen\n\tcmd\n\tfi\nelse\ncmd2\nfi\n");
-	_test_("cmd1 arg1 >output.txt | cmd2\n\nif test\nthen\n\tcmd0|cmd1\n\tif a\n\tthen\n\t\tcmd|cmd2\n\tfi\nelse\n\tcmd & cmd;\nfi");
+	//_test_("if cmd1\nthen\n\tcmd2\nfi");
+	//_test_("if cmd1 then\ncmd2\nelse\ncmd3\nfi");
+	//_test_("var=$((2+1*3))\ncmd1>output.txt $var\n\nif cmd0\nthen\n\tcmd2\nfi\nvar0=$var\ncmd_name arg arg0\nif test\nthen\n\tcmd392 arg arg\nelse\ncmd <input.txt\nfi\n");
+	//_test_("if a\nthen\n\tif b\n\tthen\n\tcmd\n\tfi\nelse\ncmd2\nfi\n");
+	//_test_("cmd1 arg1 >output.txt | cmd2\n\nif test\nthen\n\tcmd0|cmd1\n\tif a\n\tthen\n\t\tcmd|cmd2\n\tfi\nelse\n\tcmd & cmd;\nfi");
+	//_test_("if cmd\nthen fi");
+
+	/*Test11*/
+	_test_("while cmd\ndo\n\tcmd | cmd2 >output.txt\ndone");
+	_test_("cmd <input arg0\nif condition\nthen\n\twhile cond0\n\tdo\n\t\tvar=$((2*1 - 4 /5))\n\t\tcmd | cmd&\n\t\tcommnd $var arg0;\n\tdone\nfi\n");
+	_test_("while condition\ndo\ndone\n");
+	_test_("while condidiotn\ncmd\ndone");
+	_test_("while condition\ndo\ncmd\n");
+	_test_("while do\ncmd\ndone");
+	_test_("while cmd&\ndo\n\twhile cmd;\n\tdo\n\t\tcmd0 | cmd1 | cmd2\n\tdone\ndone\n");
 
 	return 0;
 }

@@ -171,7 +171,7 @@ void execute(struct Shell* shell, CommandsList* program)
 {
 	if (shell->parser->error->error)
 	{
-		fprintf(stderr, "%s\n", shell->parser->error->error_message);
+		fprintf(stderr, "Syntax error: %s\n", shell->parser->error->error_message);
 		destroy_list(&program);
 		return;
 	}
@@ -230,25 +230,25 @@ void execute(struct Shell* shell, CommandsList* program)
 
 											switch (word->word.type)
 											{
-												case WORD:
+											case WORD:
+											{
+												set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
+												printf("Expression(WORD): %s\n", word->word.word.buffer);
+											} break;
+											case PARAMETER_EXPANSION:
+											{
+												struct Entry* entry = get(shell->variables, word->word.word.buffer);
+												if (entry)
 												{
-													set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
-													printf("Expression(WORD): %s\n", word->word.word.buffer);
-												} break;
-												case PARAMETER_EXPANSION:
+													set_variable(shell, a->variable->word.buffer, entry->value);
+													printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", entry->key, entry->value);
+												}
+												else
 												{
-													struct Entry* entry = get(shell->variables, word->word.word.buffer);
-													if (entry)
-													{
-														set_variable(shell, a->variable->word.buffer, entry->value);
-														printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", entry->key, entry->value);
-													}
-													else
-													{
-														set_variable(shell, a->variable->word.buffer, "");
-														printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
-													}
-												} break;
+													set_variable(shell, a->variable->word.buffer, "");
+													printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
+												}
+											} break;
 											default: break;
 											}
 										} break;
@@ -348,6 +348,18 @@ void execute(struct Shell* shell, CommandsList* program)
 								{
 									printf("No else part\n");
 								}
+							} break;
+							case AST_WHILE:
+							{
+								struct AstWhile* ast_while = (struct AstWhile*)ast_node->actual_data;
+
+								printf("While loop:\n");
+
+								printf("Condition: ");
+								execute(shell, ast_while->condition);
+
+								printf("Body: ");
+								execute(shell, ast_while->body);
 							} break;
 							default: break;
 						}

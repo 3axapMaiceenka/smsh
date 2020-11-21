@@ -39,12 +39,12 @@ static struct AstNode* create_ast_node(void* actual_data, enum AstNodeType node_
 }
 
 /*
-cmd_prefix:				  NAME'='WORD
-			 |			  NAME'='PARAMETER_EXPANSION
-			 |			  NAME'='arithm_expression
-			 | cmd_prefix NAME'='WORD
-			 | cmd_prefix NAME'='PARAMETER_EXPANSION
-			 | cmd_prefix NAME'='arithm_expression
+cmd_prefix :            NAME'='WORD
+		   |            NAME'='PARAMETER_EXPANSION
+		   |            NAME'='arithm_expression
+		   | cmd_prefix NAME'='WORD
+		   | cmd_prefix NAME'='PARAMETER_EXPANSION
+		   | cmd_prefix NAME'='arithm_expression
 */
 AssignmentsList* cmd_prefix(struct Parser* parser)
 {
@@ -91,7 +91,7 @@ AssignmentsList* cmd_prefix(struct Parser* parser)
 
 			if (!parser->error->error)
 			{
-				set_error(parser->error, "Syntax error: invalid assignment statement\n");
+				set_error(parser->error, "invalid assignment statement");
 			}
 
 			return NULL;
@@ -101,16 +101,16 @@ AssignmentsList* cmd_prefix(struct Parser* parser)
 	return assignment_list;
 }
 
-// filenme:   WORD
-//		    | PARAMETER_EXPANSION
+// filenme: WORD
+//        | PARAMETER_EXPANSION
 struct AstWord* filename(struct Parser* parser)
 {
 	return ast_word(parser);
 }
 
 /*
-io_redirect:   '<' filename
-			 | '>' filename
+io_redirect : INPUT_REDIRECT  filename
+			| OUTPUT_REDIRECT filename
 */
 struct AstIORedirect* io_redirect(struct Parser* parser)
 {
@@ -124,7 +124,7 @@ struct AstIORedirect* io_redirect(struct Parser* parser)
 		if (!file_name) 
 		{
 			free(token);
-			set_error(parser->error, "Syntax error: incomplete I/O redirection! Expected filename!\n");
+			set_error(parser->error, "incomplete I/O redirection! Expected filename!");
 			return NULL;
 		}
 
@@ -157,7 +157,7 @@ struct AstNode* parse_arithm_expr(struct Parser* parser)
 	struct AstArithmExpr* arithm_expr = arithm_expression(parser);
 	if (!arithm_expr || !finish_reading_arithm_expr(parser->scanner))
 	{
-		set_error(parser->error, "Syntax error: invalid arithmetic expression!");
+		set_error(parser->error, "invalid arithmetic expression!");
 		return NULL;
 	}
 
@@ -170,14 +170,14 @@ struct AstNode* parse_arithm_expr(struct Parser* parser)
 }
 
 /*
-cmd_suffix:				 io_redirect
-			| cmd_suffix io_redirect
-			|			 WORD
-			|			 PARAMETER_EXPANSION
-			|			 arithm_expression
-			| cmd_suffix WORD
-			| cmd_suffix PARAMETER_EXPANSION
-			| cmd_suffix arithm_expression
+cmd_suffix :	        io_redirect
+		   | cmd_suffix io_redirect
+		   |            WORD
+		   |            PARAMETER_EXPANSION
+		   |            arithm_expression
+		   | cmd_suffix WORD
+		   | cmd_suffix PARAMETER_EXPANSION
+		   | cmd_suffix arithm_expression
 */
 struct CmdArgs* cmd_suffix(struct Parser* parser)
 {
@@ -251,18 +251,19 @@ struct CmdArgs* cmd_suffix(struct Parser* parser)
 	return cmd_args;
 }
 
-// cmd_name: WORD
+// cmd_name : WORD
+//          | PARAMETER_EXPANSION
 struct AstWord* cmd_name(struct Parser* parser)
 {
 	return ast_word(parser);
 }
 
 /*
-simple_command:   cmd_prefix cmd_name cmd_suffix
-				| cmd_prefix cmd_name
-				| cmd_prefix
-				|            cmd_name cmd_suffix
-				|            cmd_name
+simple_command : cmd_prefix cmd_name cmd_suffix
+			   | cmd_prefix cmd_name
+			   | cmd_prefix
+			   |            cmd_name cmd_suffix
+			   |            cmd_name
 */
 struct AstSimpleCommand* simple_command(struct Parser* parser)
 {
@@ -314,9 +315,9 @@ struct AstSimpleCommand* simple_command(struct Parser* parser)
 }
 
 /*
-arithm_expression:   arithm_term
-				   | arithm_term (PLUS  arithm_term)*
-				   | arithm_term (MINUS arithm_term)*
+arithm_expression : arithm_term
+				  | arithm_term (PLUS  arithm_term)*
+				  | arithm_term (MINUS arithm_term)*
 */
 struct AstArithmExpr* arithm_expression(struct Parser* parser)
 {
@@ -343,9 +344,9 @@ struct AstArithmExpr* arithm_expression(struct Parser* parser)
 }
 
 /*
-arithm_term:   arithm_factor
-			 | arithm_factor (MULTIPLY arithm_factor)*
-			 | arithm_factor (DIVIDE   arithm_factor)*
+arithm_term : arithm_factor
+			| arithm_factor (MULTIPLY arithm_factor)*
+			| arithm_factor (DIVIDE   arithm_factor)*
 */
 struct AstArithmExpr* arithm_term(struct Parser* parser)
 {
@@ -378,11 +379,11 @@ struct AstArithmExpr* arithm_term(struct Parser* parser)
 }
 
 /*
-arithm_factor:    INTEGER
-				| PARAMETER_EXPANSION
-				| LPAR arithm_expression RPAR
-				| PLUS  arithm_factor
-				| MINUS arithm_factor
+arithm_factor : INTEGER
+			  | PARAMETER_EXPANSION
+			  | LPAR arithm_expression RPAR
+			  | PLUS  arithm_factor
+			  | MINUS arithm_factor
 */
 struct AstArithmExpr* arithm_factor(struct Parser* parser)
 {
@@ -436,8 +437,8 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 }
 
 /*
-pipeline:                         simple_command
-         | pipeline '|' linebreak simple_command
+pipeline :                        simple_command
+		 | pipeline '|' linebreak simple_command
 */
 struct AstPipeline* pipeline(struct Parser* parser)
 {
@@ -463,7 +464,7 @@ struct AstPipeline* pipeline(struct Parser* parser)
 		else
 		{
 			free_ast_pipeline(ast_pipeline);
-			set_error(parser->error, "Syntax error: incomplete pipeline!");
+			set_error(parser->error, "incomplete pipeline!");
 			return NULL;
 		}
 	}
@@ -472,7 +473,7 @@ struct AstPipeline* pipeline(struct Parser* parser)
 }
 
 /*
-linebreak:   newline_list
+linebreak : newline_list
 		  | 'empty'
 */
 int linebreak(struct Parser* parser)
@@ -486,8 +487,8 @@ int linebreak(struct Parser* parser)
 }
 
 /*
-	newline_list :              NEWLINE
-				 | newline_list NEWLINE
+newline_list :              NEWLINE
+			 | newline_list NEWLINE
 */
 int newline_list(struct Parser* parser)
 {
@@ -506,7 +507,7 @@ int newline_list(struct Parser* parser)
 
 /*
 list : newline_list pipeline_list
-     |              pipeline_list
+	 |              pipeline_list
 */
 PipelinesList* list(struct Parser* parser)
 {
@@ -527,7 +528,7 @@ PipelinesList* list(struct Parser* parser)
 /*
 pipeline_list : pipeline_list separator pipeline
 			  | pipeline_list separator
-			  | 		                pipeline
+			  |                         pipeline
 */
 PipelinesList* pipeline_list(struct Parser* parser)
 {
@@ -559,7 +560,7 @@ PipelinesList* pipeline_list(struct Parser* parser)
 }
 
 /*
-separator: separator_op linebreak
+separator : separator_op linebreak
 		  | newline_list
 */
 enum RunningMode separator(struct Parser* parser)
@@ -583,8 +584,8 @@ enum RunningMode separator(struct Parser* parser)
 }
 
 /*
-separator_op: ASYNC_LIST
-			| SEQ_LIST
+separator_op : ASYNC_LIST
+			 | SEQ_LIST
 */
 enum RunningMode separator_op(struct Parser* parser) 
 {
@@ -602,7 +603,7 @@ enum RunningMode separator_op(struct Parser* parser)
 		} break;
 		default:
 		{
-			set_error(parser->error, "Syntax error: expected '&' or ';' token");
+			set_error(parser->error, "expected '&' or ';' token");
 			return ERROR;
 		} break;
 	}
@@ -667,7 +668,7 @@ CommandsList* term(struct Parser* parser)
 
 /*
 cc_list : cc_list newline_list compound_command
-		| 		               compound_command
+		|                      compound_command
 		|         newline_list compound_command
 */
 CompoundCommandsList* cc_list(struct Parser* parser)
@@ -707,10 +708,20 @@ compound_command: for_clause
 				| while_clause
 For now:
 compouns_command: if_caluse
+				| while_clause
 */
 struct AstNode* compound_command(struct Parser* parser)
 {
-	return if_clause(parser); //TODO: add for_clause and while_clause
+	//TODO: add for_clause
+
+	struct AstNode* node = if_clause(parser);
+
+	if (!node)
+	{
+		return while_clause(parser);
+	}
+
+	return node;
 }
 
 /*
@@ -730,7 +741,7 @@ struct AstNode* if_clause(struct Parser* parser)
 	if (!ast_if->condition)
 	{
 		free(ast_if);
-		set_error(parser->error, "Syntax error: invalid if statement!");
+		set_error(parser->error, "invalid 'if' statement!");
 		return NULL;
 	}
 
@@ -738,35 +749,37 @@ struct AstNode* if_clause(struct Parser* parser)
 	{
 		destroy_list(&ast_if->condition);
 		free(ast_if);
-		set_error(parser->error, "Syntax error: expected 'then' token in 'if' statement!");
+		set_error(parser->error, "expected 'then' token in 'if' statement!");
 		return NULL;
 	}
 
 	ast_if->if_part = compoud_list(parser);
-	if (!ast_if->if_part)
+
+	if (!ast_if->if_part && parser->error->error)
 	{
-		if (!parser->error->error)
-		{
-			destroy_list(&ast_if->condition);
-			free(ast_if);
-			set_error(parser->error, "Syntax error: invalid if statement!");
-			return NULL;
-		}
+		destroy_list(&ast_if->condition);
+		free(ast_if);
+		return NULL;
 	}
 
 	ast_if->else_part = else_part(parser);
 	
+	if (parser->error->error)
+	{
+		destroy_list(&ast_if->if_part);
+		destroy_list(&ast_if->condition);
+		free(ast_if);
+		return NULL;
+	}
+
 	if (!eat(parser, FI, get_next_token))
 	{
-		if (!parser->error->error)
-		{
-			destroy_list(&ast_if->condition);
-			destroy_list(&ast_if->if_part);	
-			destroy_list(&ast_if->else_part);
-			free(ast_if);
-			set_error(parser->error, "Syntax error: expected 'fi' token in 'if' statement!");
-			return NULL;
-		}
+		destroy_list(&ast_if->condition);
+		destroy_list(&ast_if->if_part);	
+		destroy_list(&ast_if->else_part);
+		free(ast_if);
+		set_error(parser->error, "expected 'fi' token in 'if' statement!");
+		return NULL;
 	}
 
 	return create_ast_node(ast_if, AST_IF);
@@ -783,6 +796,62 @@ CommandsList* else_part(struct Parser* parser)
 	return compoud_list(parser);
 }
 
+//while_clause: While compound_list do_group
+struct AstNode* while_clause(struct Parser* parser)
+{
+	if (!eat(parser, WHILE, get_next_token))
+	{
+		return NULL;
+	}
+
+	CommandsList* condition = compoud_list(parser);
+	if (!condition)
+	{
+		set_error(parser->error, "invalid 'while' loop!");
+		return NULL;
+	}
+
+	CommandsList* body = do_group(parser);
+	if (!body && parser->error->error)
+	{
+		destroy_list(&condition);
+		return NULL;
+	}
+
+	struct AstWhile* ast_while = malloc(sizeof(struct AstWhile));
+	ast_while->body = body;
+	ast_while->condition = condition;
+
+	return create_ast_node(ast_while, AST_WHILE);
+}
+
+//do_group : Do compound_list Done
+CommandsList* do_group(struct Parser* parser)
+{
+	if (!eat(parser, DO, get_next_token))
+	{
+		set_error(parser->error, "expected 'do' token!");
+		return NULL;
+	}
+
+	CommandsList* commands = compoud_list(parser);
+
+	if (parser->error->error)
+	{
+		destroy_list(&commands);
+		return NULL;
+	}
+	
+	if (!eat(parser, DONE, get_next_token))
+	{
+		set_error(parser->error, "expected 'done' token!");
+		destroy_list(&commands);
+		return NULL;
+	}
+
+	return commands;
+}
+
 CommandsList* parse(struct Parser* parser)
 {
 	if (parser->current_token.type == END)
@@ -794,9 +863,9 @@ CommandsList* parse(struct Parser* parser)
 
 	//newline_list(parser); ????
 
-	if (parser->current_token.type != END)
+	if (!parser->error->error && parser->current_token.type != END)
 	{
-		set_error(parser->error, "Syntax error: invalid token!");
+		set_error(parser->error, "invalid token!");
 	}
 
 	return program;
@@ -850,7 +919,7 @@ void free_ast_node(void* node)
 			} break;
 			case AST_WHILE:
 			{
-				// free ast while
+				free_ast_while(n->actual_data);
 			} break;
 			case AST_ARITHM_EXPR:
 			{
@@ -942,5 +1011,17 @@ void free_ast_if(void* ast_if)
 		destroy_list(&if_statement->condition);
 		destroy_list(&if_statement->if_part);
 		destroy_list(&if_statement->else_part);
+		free(if_statement);
+	}
+}
+
+void free_ast_while(void* ast_while)
+{
+	if (ast_while)
+	{
+		struct AstWhile* while_loop = (struct AstWhile*)ast_while;
+		destroy_list(&while_loop->body);
+		destroy_list(&while_loop->condition);
+		free(while_loop);
 	}
 }
