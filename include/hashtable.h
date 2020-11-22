@@ -23,11 +23,10 @@ struct Hashtable
 	size_t capacity;
 };
 
-size_t hashf(struct Hashtable* hashtable, const char* key);
 struct Hashtable* create_hashtable(size_t capacity);
-void destroy_hashtable(struct Hashtable* hashtable);
+void destroy_hashtable(struct Hashtable** hashtable);
 void insert(struct Hashtable* hashtable, const char* key, const char* value); 
-struct Entry* get(struct Hashtable* hashtable, const char* key);
-void free_entry(void* entry); // entry is a pointer to struct Entry
+void erase(struct Hashtable* hashtable, const char* key);
+char** get(struct Hashtable* hashtable, const char* key);
 
 #endif

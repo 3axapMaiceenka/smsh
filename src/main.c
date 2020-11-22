@@ -7,7 +7,38 @@
 #include "hashtable.h"
 #include "utility.h"
 
-void _test_(const char* string)
+static void _test_hashtable()
+{
+	const char* keys[] = { "key0", "abcd", "1234567", "ooooooooooo", "key1", "key2", "key3", "key4", "qwerty", "poiuy", "test" };
+	const char* values[] = { "0",      "1",    "2",         "3",         "4",    "5",    "6",     "7",   "8",       "9",    "10" };
+
+	struct Hashtable* h = create_hashtable(128);
+
+	for (size_t i = 0; i < sizeof(keys) / sizeof(char*); i++)
+	{
+		insert(h, keys[i], values[i]);
+	}
+
+	assert(h->size == (sizeof(keys) / sizeof(char*)));
+
+	for (size_t i = 0; i < sizeof(keys) / sizeof(char*); i++)
+	{
+		char** value = get(h, keys[i]);
+
+		assert(value);
+		assert(!strcmp(*value, values[i]));
+
+		if (i % 2)
+		{
+			erase(h, keys[i]);
+			assert(!get(h, keys[i]));
+		}
+	}
+
+	destroy_hashtable(&h);
+}
+
+static void _test_(const char* string)
 {
 	struct Shell* shell = start();
 
@@ -141,6 +172,8 @@ int main()
 	//_test_("if a\nthen\n\tif b\n\tthen\n\tcmd\n\tfi\nelse\ncmd2\nfi\n");
 	//_test_("cmd1 arg1 >output.txt | cmd2\n\nif test\nthen\n\tcmd0|cmd1\n\tif a\n\tthen\n\t\tcmd|cmd2\n\tfi\nelse\n\tcmd & cmd;\nfi");
 	//_test_("if cmd\nthen fi");
+
+	_test_hashtable();
 
 	/*Test11*/
 	_test_("while cmd\ndo\n\tcmd | cmd2 >output.txt\ndone");

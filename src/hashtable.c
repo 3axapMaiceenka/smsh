@@ -2,7 +2,7 @@
 #include "utility.h"
 #include <string.h>
 
-size_t hashf(struct Hashtable* hashtable, const char* key)
+static size_t hashf(struct Hashtable* hashtable, const char* key)
 {
 	size_t hash = 1315423911;
 
@@ -21,57 +21,29 @@ struct Hashtable* create_hashtable(size_t capacity)
 
 	hashtable->table = calloc(capacity, sizeof(struct Bucket*));
 	hashtable->capacity = capacity;
-	hashtable->size = 0;
 
 	return hashtable;
 }
 
-void destroy_hashtable(struct Hashtable* hashtable)
+static void free_entry(void* entry)
 {
-	for (size_t i = 0, count = 0; i < hashtable->capacity && count < hashtable->size; i++)
-	{
-		if (hashtable->table[i])
-		{
-			count += hashtable->table[i]->size;
-			destroy_list(&hashtable->table[i]->entries);
-			free(hashtable->table[i]);
-		}
-	}
-
-	free(hashtable);
+	struct Entry* e = (struct Entry*)entry;
+	free(e->key);
+	free(e->value);
+	free(e);
 }
 
-void insert(struct Hashtable* hashtable, const char* key, const char* value)
+static struct Entry* _get(struct Hashtable* hashtable, const char* key, size_t indx)
 {
-	size_t indx = hashf(hashtable, key);
-
-	struct Entry* entry = malloc(sizeof(struct Entry)); 
-	entry->key = copy_string(key);
-	entry->value = copy_string(value);
-
-	if (!hashtable->table[indx])
-	{
-		hashtable->table[indx] = calloc(1, sizeof(struct Bucket));
-		hashtable->table[indx]->entries = create_list(&free_entry);
-	}
-
-	push_back(hashtable->table[indx]->entries, entry);
-	hashtable->table[indx]->size++;
-	hashtable->size++;
-}
-
-struct Entry* get(struct Hashtable* hashtable, const char* key)
-{
-	size_t indx = hashf(hashtable, key);
-
 	if (!hashtable->table[indx])
 	{
 		return NULL;
 	}
 
 	struct Entry* entry = NULL;
+	struct Node* node = hashtable->table[indx]->entries->head;
 
-	for (struct Node* node = hashtable->table[indx]->entries->head; node; node = node->next)
+	for (; node; node = node->next)
 	{
 		entry = (struct Entry*)(node->data);
 
@@ -81,18 +53,87 @@ struct Entry* get(struct Hashtable* hashtable, const char* key)
 		}
 	}
 
-	return entry;
+	return node ? entry : NULL;
 }
 
-// entry is a pointer to struct Entry
-void free_entry(void* entry)
+char** get(struct Hashtable* hashtable, const char* key)
 {
-	struct Entry* e = (struct Entry*)entry;
+	struct Entry* entry = _get(hashtable, key, hashf(hashtable, key));
 
-	if (e)
+	if (entry)
 	{
-		free(e->key);
-		free(e->value);
-		free(e);
+		return &entry->value;
+	}
+
+	return NULL;
+}
+
+void insert(struct Hashtable* hashtable, const char* key, const char* value)
+{
+	size_t indx = hashf(hashtable, key);
+
+	if (_get(hashtable, key, indx))
+	{
+		return;
+	}
+
+	struct Entry* entry = malloc(sizeof(struct Entry)); 
+	entry->key = copy_string(key);
+	entry->value = copy_string(value);
+
+	if (!hashtable->table[indx])
+	{
+		hashtable->table[indx] = calloc(1, sizeof(struct Bucket));
+		hashtable->table[indx]->entries = create_list(free_entry);
+		hashtable->size++;
+	}
+
+	push_back(hashtable->table[indx]->entries, entry);
+	hashtable->table[indx]->size++;
+}
+
+static void destroy_bucket(struct Bucket** bucket)
+{
+	destroy_list(&(*bucket)->entries);
+	free(*bucket);
+	*bucket = NULL;
+}
+
+void destroy_hashtable(struct Hashtable** hashtable)
+{
+	if (*hashtable)
+	{
+		struct Hashtable* h = *hashtable;
+
+		for (size_t i = 0, count = 0; i < h->capacity && count < h->size; i++)
+		{
+			if (h->table[i])
+			{
+				count++;
+				destroy_bucket(&h->table[i]);
+			}
+		}
+
+		free(*hashtable);
+		*hashtable = NULL;
+	}
+}
+
+void erase(struct Hashtable* hashtable, const char* key)
+{
+	size_t indx = hashf(hashtable, key);
+	struct Entry* entry = _get(hashtable, key, indx);
+
+	if (entry)
+	{
+		if (!(--hashtable->table[indx]->size))
+		{
+			hashtable->size--;
+			destroy_bucket(&hashtable->table[indx]);
+		}
+		else
+		{
+			remove_node(hashtable->table[indx]->entries, entry);
+		}
 	}
 }

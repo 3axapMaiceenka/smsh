@@ -29,7 +29,7 @@ void stop(struct Shell* shell)
 		free(shell->scanner);
 
 		destroy_list(&shell->program);
-		destroy_hashtable(shell->variables);
+		destroy_hashtable(&shell->variables);
 	}
 }
 
@@ -42,17 +42,18 @@ void initialize(struct Shell* shell, char* buffer)
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value)
 {
-	struct Entry* var = get(shell->variables, var_name);
+	char** value = get(shell->variables, var_name);
 
-	if (!var)
+	if (!value)
 	{
 		insert(shell->variables, var_name, var_value);
 		return 0;
 	}
 	else
 	{
-		free(var->value);
-		var->value = copy_string(var_value);
+		size_t size = strlen(var_value) + 1;
+		*value = realloc(*value, size);
+		memcpy(*value, var_value, size);
 		return 1;
 	}
 }
@@ -67,10 +68,10 @@ static const char* expand_token(struct Shell* shell, struct Token* token)
 		} break;
 		case PARAMETER_EXPANSION:
 		{
-			struct Entry* entry = get(shell->variables, token->word.buffer);
-			if (entry)
+			char** value = get(shell->variables, token->word.buffer);
+			if (value)
 			{
-				return entry->value;
+				return *value;
 			}
 			else
 			{
@@ -224,50 +225,51 @@ void execute(struct Shell* shell, CommandsList* program)
 
 										switch (expr->node_type)
 										{
-										case AST_WORD:
-										{
-											word = expr->actual_data;
+											case AST_WORD:
+											{
+												word = expr->actual_data;
 
-											switch (word->word.type)
-											{
-											case WORD:
-											{
-												set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
-												printf("Expression(WORD): %s\n", word->word.word.buffer);
-											} break;
-											case PARAMETER_EXPANSION:
-											{
-												struct Entry* entry = get(shell->variables, word->word.word.buffer);
-												if (entry)
+												switch (word->word.type)
 												{
-													set_variable(shell, a->variable->word.buffer, entry->value);
-													printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", entry->key, entry->value);
-												}
-												else
+												case WORD:
 												{
-													set_variable(shell, a->variable->word.buffer, "");
-													printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
+													set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
+													printf("Expression(WORD): %s\n", word->word.word.buffer);
+												} break;
+												case PARAMETER_EXPANSION:
+												{
+													char** value = get(shell->variables, word->word.word.buffer);
+
+													if (value)
+													{
+														set_variable(shell, a->variable->word.buffer, *value);
+														printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", word->word.word.buffer, *value);
+													}
+													else
+													{
+														set_variable(shell, a->variable->word.buffer, "");
+														printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
+													}
+												} break;
+												default: break;
 												}
-											} break;
-											default: break;
-											}
-										} break;
-										case AST_ARITHM_EXPR:
-										{
-											char str[12];
-											arithm_expr = expr->actual_data;
-											sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
-
-											if (shell->execution_error->error)
+											} break;										
+											case AST_ARITHM_EXPR:
 											{
-												fprintf(stderr, "%s\n", shell->execution_error->error_message);
-												return;
-											}
+												char str[12];
+												arithm_expr = expr->actual_data;
+												sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
 
-											set_variable(shell, a->variable->word.buffer, str);
-											printf("Expression(Arithmetic expansion): %s\n", str);
-										} break;
-										default: printf("error\n"); break;
+												if (shell->execution_error->error)
+												{
+													fprintf(stderr, "%s\n", shell->execution_error->error_message);
+													return;
+												}
+
+												set_variable(shell, a->variable->word.buffer, str);
+												printf("Expression(Arithmetic expansion): %s\n", str);
+											} break;
+											default: printf("error\n"); break;
 										}
 									}
 								}
