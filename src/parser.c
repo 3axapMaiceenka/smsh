@@ -40,11 +40,11 @@ static struct AstNode* create_ast_node(void* actual_data, enum AstNodeType node_
 
 /*
 cmd_prefix :            NAME'='WORD
-		   |            NAME'='PARAMETER_EXPANSION
-		   |            NAME'='arithm_expression
-		   | cmd_prefix NAME'='WORD
-		   | cmd_prefix NAME'='PARAMETER_EXPANSION
-		   | cmd_prefix NAME'='arithm_expression
+           |            NAME'='PARAMETER_EXPANSION
+           |            NAME'='arithm_expression
+           | cmd_prefix NAME'='WORD
+           | cmd_prefix NAME'='PARAMETER_EXPANSION
+           | cmd_prefix NAME'='arithm_expression
 */
 AssignmentsList* cmd_prefix(struct Parser* parser)
 {
@@ -110,7 +110,7 @@ struct AstWord* filename(struct Parser* parser)
 
 /*
 io_redirect : INPUT_REDIRECT  filename
-			| OUTPUT_REDIRECT filename
+            | OUTPUT_REDIRECT filename
 */
 struct AstIORedirect* io_redirect(struct Parser* parser)
 {
@@ -171,13 +171,13 @@ struct AstNode* parse_arithm_expr(struct Parser* parser)
 
 /*
 cmd_suffix :	        io_redirect
-		   | cmd_suffix io_redirect
-		   |            WORD
-		   |            PARAMETER_EXPANSION
-		   |            arithm_expression
-		   | cmd_suffix WORD
-		   | cmd_suffix PARAMETER_EXPANSION
-		   | cmd_suffix arithm_expression
+           | cmd_suffix io_redirect
+           |            WORD
+           |            PARAMETER_EXPANSION
+           |            arithm_expression
+           | cmd_suffix WORD
+           | cmd_suffix PARAMETER_EXPANSION
+           | cmd_suffix arithm_expression
 */
 struct CmdArgs* cmd_suffix(struct Parser* parser)
 {
@@ -706,19 +706,19 @@ CompoundCommandsList* cc_list(struct Parser* parser)
 compound_command: for_clause
 				| if_clause
 				| while_clause
-For now:
-compouns_command: if_caluse
-				| while_clause
 */
 struct AstNode* compound_command(struct Parser* parser)
 {
-	//TODO: add for_clause
-
 	struct AstNode* node = if_clause(parser);
 
-	if (!node)
+	if (!node && !parser->error->error)
 	{
-		return while_clause(parser);
+		node = while_clause(parser);
+
+		if (!node && !parser->error->error)
+		{
+			return for_clause(parser);
+		}
 	}
 
 	return node;
@@ -852,6 +852,97 @@ CommandsList* do_group(struct Parser* parser)
 	return commands;
 }
 
+/*
+for_clause : For WORD linebreak                          do_group
+		   | For WORD linebreak In wordlist newline_list do_group
+*/
+struct AstNode* for_clause(struct Parser* parser)
+{
+	if (!eat(parser, FOR, get_next_token))
+	{
+		return NULL;
+	}
+
+	if (parser->current_token.type != WORD)
+	{
+		set_error(parser->error, "invalid 'for' loop! Expected 'word' token");
+		return NULL;
+	}
+
+	struct AstFor* ast_for = calloc(1, sizeof(struct AstFor));
+	ast_for->variable = ast_word(parser);
+
+	linebreak(parser);
+
+	if (eat(parser, IN, get_next_token))
+	{
+		if (!(ast_for->wordlist = wordlist(parser)))
+		{
+			set_error(parser->error, "invalid 'for' loop!");
+			free_ast_for(ast_for);
+			return NULL;
+		}
+
+		newline_list(parser);
+	}
+
+	ast_for->body = do_group(parser);
+
+	if (parser->error->error)
+	{
+		free_ast_for(ast_for);
+		return NULL;
+	}
+
+	return create_ast_node(ast_for, AST_FOR);
+}
+
+/*
+wordlist : wordlist WORD
+		 | wordlist PARAMETER_EXPANSION
+		 | wordlist arithm_expression
+		 |          WORD
+		 |          PARAMETER_EXPANSION
+		 |          arithm_expression
+*/
+Wordlist* wordlist(struct Parser* parser)
+{
+	Wordlist* list = create_list(free_ast_node);
+	struct AstNode* arithm_expr = NULL;
+	struct AstWord* word = NULL;
+
+	do
+	{
+		if (parser->parsing_arithm_expr)
+		{
+			arithm_expr = parse_arithm_expr(parser);
+
+			if (!arithm_expr)
+			{
+				destroy_list(&list);
+				return NULL;
+			}
+
+			push_back(list, arithm_expr);
+		}
+
+		word = ast_word(parser);
+
+		if (word)
+		{
+			push_back(list, create_ast_node(word, AST_WORD));
+		}
+	} while (word || parser->parsing_arithm_expr);
+
+	if (!list->head)
+	{
+		free(list);
+		return NULL;
+	}
+
+	return list;
+}
+
 CommandsList* parse(struct Parser* parser)
 {
 	if (parser->current_token.type == END)
@@ -860,8 +951,6 @@ CommandsList* parse(struct Parser* parser)
 	}
 
 	CommandsList* program = compoud_list(parser);
-
-	//newline_list(parser); ????
 
 	if (!parser->error->error && parser->current_token.type != END)
 	{
@@ -915,7 +1004,7 @@ void free_ast_node(void* node)
 			} break;
 			case AST_FOR:
 			{
-				// free ast for
+				free_ast_for(n->actual_data);
 			} break;
 			case AST_WHILE:
 			{
@@ -1023,5 +1112,17 @@ void free_ast_while(void* ast_while)
 		destroy_list(&while_loop->body);
 		destroy_list(&while_loop->condition);
 		free(while_loop);
+	}
+}
+
+void free_ast_for(void* ast_for)
+{
+	if (ast_for)
+	{
+		struct AstFor* for_loop = (struct AstFor*)ast_for;
+		destroy_list(&for_loop->wordlist);
+		destroy_list(&for_loop->body);
+		free_ast_word(for_loop->variable);
+		free(ast_for);
 	}
 }

@@ -160,15 +160,13 @@ int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 				return -execute_arithm_expr(shell, arithm_expr->left);
 			}
 		} break;
-		default:
-		{
-		} break;
+		default: break;
 	}
 
 	return 0;
 }
 
-void execute(struct Shell* shell, CommandsList* program)
+void execute_print(struct Shell* shell, CommandsList* program)
 {
 	if (shell->parser->error->error)
 	{
@@ -231,29 +229,29 @@ void execute(struct Shell* shell, CommandsList* program)
 
 												switch (word->word.type)
 												{
-												case WORD:
-												{
-													set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
-													printf("Expression(WORD): %s\n", word->word.word.buffer);
-												} break;
-												case PARAMETER_EXPANSION:
-												{
-													char** value = get(shell->variables, word->word.word.buffer);
+													case WORD:
+													{
+														set_variable(shell, a->variable->word.buffer, word->word.word.buffer);
+														printf("Expression(WORD): %s\n", word->word.word.buffer);
+													} break;
+													case PARAMETER_EXPANSION:
+													{
+														char** value = get(shell->variables, word->word.word.buffer);
 
-													if (value)
-													{
-														set_variable(shell, a->variable->word.buffer, *value);
-														printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", word->word.word.buffer, *value);
-													}
-													else
-													{
-														set_variable(shell, a->variable->word.buffer, "");
-														printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
-													}
-												} break;
-												default: break;
+														if (value)
+														{
+															set_variable(shell, a->variable->word.buffer, *value);
+															printf("Expression(PARAMETER_EXPANSION): %s -> %s\n", word->word.word.buffer, *value);
+														}
+														else
+														{
+															set_variable(shell, a->variable->word.buffer, "");
+															printf("Expression(PARAMETER_EXPANSION): %s -> 'empty'\n", word->word.word.buffer);
+														}
+													} break;
+													default: break;
 												}
-											} break;										
+											} break;
 											case AST_ARITHM_EXPR:
 											{
 												char str[12];
@@ -336,15 +334,15 @@ void execute(struct Shell* shell, CommandsList* program)
 								printf("If stamtent:\n");
 
 								printf("Condition: ");
-								execute(shell, ast_if->condition);
+								execute_print(shell, ast_if->condition);
 
 								printf("If part: ");
-								execute(shell, ast_if->if_part);
+								execute_print(shell, ast_if->if_part);
 
 								if (ast_if->else_part)
 								{
 									printf("Else part: ");
-									execute(shell, ast_if->else_part);
+									execute_print(shell, ast_if->else_part);
 								}
 								else
 								{
@@ -358,10 +356,72 @@ void execute(struct Shell* shell, CommandsList* program)
 								printf("While loop:\n");
 
 								printf("Condition: ");
-								execute(shell, ast_while->condition);
+								execute_print(shell, ast_while->condition);
 
 								printf("Body: ");
-								execute(shell, ast_while->body);
+								execute_print(shell, ast_while->body);
+							} break;
+							case AST_FOR:
+							{
+								struct AstFor* ast_for = (struct AstFor*)ast_node->actual_data;
+
+								printf("For loop:\n");
+								printf("Variable: %s\n", ast_for->variable->word.word.buffer);
+
+								char** value = get(shell->variables, ast_for->variable->word.word.buffer);
+
+								if (!value)
+								{
+									insert(shell->variables, ast_for->variable->word.word.buffer, "");
+								}
+
+								printf("Variable's values:\n");
+
+								if (ast_for->wordlist)
+								{
+									for (struct Node* node = ast_for->wordlist->head; node; node = node->next)
+									{
+										struct AstNode* expr = (struct AstNode*)node->data;
+
+										switch (expr->node_type)
+										{
+											case AST_WORD:
+											{
+												struct AstWord* word = expr->actual_data;
+												const char* token_value = expand_token(shell, &word->word);
+
+												printf("(WORD): %s\n", token_value);
+
+												set_variable(shell, ast_for->variable->word.word.buffer, token_value);
+											} break;
+											case AST_ARITHM_EXPR:
+											{
+												char str[12];
+												struct AstArithmExpr* arithm_expr = expr->actual_data;
+												sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+
+												if (shell->execution_error->error)
+												{
+													fprintf(stderr, "%s\n", shell->execution_error->error_message);
+													return;
+												}
+
+												printf("(Arithmetic expansion): %s\n", str);
+
+												set_variable(shell, ast_for->variable->word.word.buffer, str);
+											} break;
+											default: break;
+										}
+									}
+								}
+
+								printf("Body: ");
+								execute_print(shell, ast_for->body);
+
+								if (!value)
+								{
+									erase(shell->variables, ast_for->variable->word.word.buffer);
+								}
 							} break;
 							default: break;
 						}

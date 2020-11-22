@@ -106,6 +106,13 @@ struct AstWhile
 	CommandsList* body;
 };
 
+struct AstFor
+{
+	struct AstWord* variable;
+	Wordlist* wordlist; // variable's values, can be NULL
+	CommandsList* body;
+};
+
 /*
 io_redirect : INPUT_REDIRECT  filename
             | OUTPUT_REDIRECT filename
@@ -244,9 +251,6 @@ CompoundCommandsList* cc_list(struct Parser* parser);
 compound_command: for_clause
                 | if_clause
                 | while_clause
-For now:
-compouns_command: if_caluse
-                | while_clause
 */
 struct AstNode* compound_command(struct Parser* parser);
 
@@ -266,9 +270,20 @@ struct AstNode* while_clause(struct Parser* parser);
 CommandsList* do_group(struct Parser* parser);
 
 /*
-for_clause : For name linebreak                          do_group
-           | For name linebreak In wordlist newline_list do_group
+for_clause : For WORD linebreak                          do_group
+           | For WORD linebreak In wordlist newline_list do_group
 */
+struct AstNode* for_clause(struct Parser* parser);
+
+/*
+wordlist : wordlist WORD
+         | wordlist PARAMETER_EXPANSION
+         | wordlist arithm_expression
+         |          WORD
+         |          PARAMETER_EXPANSION
+         |          arithm_expression
+*/
+Wordlist* wordlist(struct Parser* parser);
 
 
 CommandsList* parse(struct Parser* parser);
@@ -289,5 +304,6 @@ void free_ast_arithm_expr(void* arithm_expr);
 void free_ast_pipeline(void* ast_pipeline);
 void free_ast_if(void* ast_if);
 void free_ast_while(void* ast_while);
+void free_ast_for(void* ast_for);
 
 #endif

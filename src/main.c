@@ -7,7 +7,7 @@
 #include "hashtable.h"
 #include "utility.h"
 
-static void _test_hashtable()
+/*static void _test_hashtable()
 {
 	const char* keys[] = { "key0", "abcd", "1234567", "ooooooooooo", "key1", "key2", "key3", "key4", "qwerty", "poiuy", "test" };
 	const char* values[] = { "0",      "1",    "2",         "3",         "4",    "5",    "6",     "7",   "8",       "9",    "10" };
@@ -36,7 +36,7 @@ static void _test_hashtable()
 	}
 
 	destroy_hashtable(&h);
-}
+}*/
 
 static void _test_(const char* string)
 {
@@ -47,7 +47,7 @@ static void _test_(const char* string)
 
 	initialize(shell, test);
 	shell->program = parse(shell->parser);
-	execute(shell, shell->program);
+	execute_print(shell, shell->program);
 	stop(shell);
 
 	free(test);
@@ -173,16 +173,24 @@ int main()
 	//_test_("cmd1 arg1 >output.txt | cmd2\n\nif test\nthen\n\tcmd0|cmd1\n\tif a\n\tthen\n\t\tcmd|cmd2\n\tfi\nelse\n\tcmd & cmd;\nfi");
 	//_test_("if cmd\nthen fi");
 
-	_test_hashtable();
-
 	/*Test11*/
-	_test_("while cmd\ndo\n\tcmd | cmd2 >output.txt\ndone");
-	_test_("cmd <input arg0\nif condition\nthen\n\twhile cond0\n\tdo\n\t\tvar=$((2*1 - 4 /5))\n\t\tcmd | cmd&\n\t\tcommnd $var arg0;\n\tdone\nfi\n");
-	_test_("while condition\ndo\ndone\n");
-	_test_("while condidiotn\ncmd\ndone");
-	_test_("while condition\ndo\ncmd\n");
-	_test_("while do\ncmd\ndone");
-	_test_("while cmd&\ndo\n\twhile cmd;\n\tdo\n\t\tcmd0 | cmd1 | cmd2\n\tdone\ndone\n");
+	//_test_("while cmd\ndo\n\tcmd | cmd2 >output.txt\ndone");
+	//_test_("cmd <input arg0\nif condition\nthen\n\twhile cond0\n\tdo\n\t\tvar=$((2*1 - 4 /5))\n\t\tcmd | cmd&\n\t\tcommnd $var arg0;\n\tdone\nfi\n");
+	//_test_("while condition\ndo\ndone\n");
+	//_test_("while condidiotn\ncmd\ndone");
+	//_test_("while condition\ndo\ncmd\n");
+	//_test_("while do\ncmd\ndone");
+	//_test_("while cmd&\ndo\n\twhile cmd;\n\tdo\n\t\tcmd0 | cmd1 | cmd2\n\tdone\ndone\n");
+
+	//_test_hashtable();
+	
+	/*Test12*/
+	_test_("for i\ndo\n\tcmd arg0 <input | cmd0&\ndone");
+	_test_("for i in $((2+1)) $((1*0)) test\ndo\n\tcmd arg0 $i\ndone");
+	_test_("for\ndo\ncmd\ndone");
+	_test_("for i in $((2+3/2))\ncmd\ndone");
+	_test_("var=5\ncmd $var\nfor i in var $var\ndo\n\techo $i '$var';\ndone\necho $i");
+	_test_("for i in 'for' $((2+3))\ndo\n\tfor j\n\tdo\n\t\tcmd $i $j\n\tdone\ndone");
 
 	return 0;
 }
