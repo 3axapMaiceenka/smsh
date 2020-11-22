@@ -13,6 +13,7 @@ void push_back(struct List* list, void* data)
 {
 	struct Node* last = calloc(1, sizeof(struct Node));
 	last->data = data;
+	last->prev = list->tail;
 
 	if (!list->head)
 	{
@@ -22,6 +23,38 @@ void push_back(struct List* list, void* data)
 
 	list->tail->next = last;
 	list->tail = last;
+}
+
+static struct Node* find(struct List* list, void* data)
+{
+	if (data)
+	{
+		for (struct Node* node = list->head; node; node = node->next)
+		{
+			if (node->data == data)
+			{
+				return node;
+			}
+		}	
+	}
+
+	return NULL;
+}
+
+void remove_node(struct List* list, void* data)
+{
+	struct Node* node = find(list, data);
+
+	if (node)
+	{
+		struct Node** prev = list->head != node ? &node->prev->next : &list->head;
+		struct Node** next = list->tail != node ? &node->next->prev : &list->tail;
+
+		*prev = node->next;
+		*next = node->prev;
+
+		list->free_data(data);
+	}
 }
 
 void destroy_list(struct List** list)
