@@ -260,10 +260,10 @@ struct AstWord* cmd_name(struct Parser* parser)
 
 /*
 simple_command : cmd_prefix cmd_name cmd_suffix
-			   | cmd_prefix cmd_name
-			   | cmd_prefix
-			   |            cmd_name cmd_suffix
-			   |            cmd_name
+               | cmd_prefix cmd_name
+               | cmd_prefix
+               |            cmd_name cmd_suffix
+               |            cmd_name
 */
 struct AstSimpleCommand* simple_command(struct Parser* parser)
 {
@@ -316,8 +316,8 @@ struct AstSimpleCommand* simple_command(struct Parser* parser)
 
 /*
 arithm_expression : arithm_term
-				  | arithm_term (PLUS  arithm_term)*
-				  | arithm_term (MINUS arithm_term)*
+                  | arithm_term (PLUS  arithm_term)*
+                  | arithm_term (MINUS arithm_term)*
 */
 struct AstArithmExpr* arithm_expression(struct Parser* parser)
 {
@@ -345,8 +345,8 @@ struct AstArithmExpr* arithm_expression(struct Parser* parser)
 
 /*
 arithm_term : arithm_factor
-			| arithm_factor (MULTIPLY arithm_factor)*
-			| arithm_factor (DIVIDE   arithm_factor)*
+            | arithm_factor (MULTIPLY arithm_factor)*
+            | arithm_factor (DIVIDE   arithm_factor)*
 */
 struct AstArithmExpr* arithm_term(struct Parser* parser)
 {
@@ -380,10 +380,10 @@ struct AstArithmExpr* arithm_term(struct Parser* parser)
 
 /*
 arithm_factor : INTEGER
-			  | PARAMETER_EXPANSION
-			  | LPAR arithm_expression RPAR
-			  | PLUS  arithm_factor
-			  | MINUS arithm_factor
+              | PARAMETER_EXPANSION
+              | LPAR arithm_expression RPAR
+              | PLUS  arithm_factor
+              | MINUS arithm_factor
 */
 struct AstArithmExpr* arithm_factor(struct Parser* parser)
 {
@@ -438,7 +438,7 @@ struct AstArithmExpr* arithm_factor(struct Parser* parser)
 
 /*
 pipeline :                        simple_command
-		 | pipeline '|' linebreak simple_command
+         | pipeline '|' linebreak simple_command
 */
 struct AstPipeline* pipeline(struct Parser* parser)
 {
@@ -474,7 +474,7 @@ struct AstPipeline* pipeline(struct Parser* parser)
 
 /*
 linebreak : newline_list
-		  | 'empty'
+          | 'empty'
 */
 int linebreak(struct Parser* parser)
 {
@@ -488,7 +488,7 @@ int linebreak(struct Parser* parser)
 
 /*
 newline_list :              NEWLINE
-			 | newline_list NEWLINE
+             | newline_list NEWLINE
 */
 int newline_list(struct Parser* parser)
 {
@@ -507,7 +507,7 @@ int newline_list(struct Parser* parser)
 
 /*
 list : newline_list pipeline_list
-	 |              pipeline_list
+     |              pipeline_list
 */
 PipelinesList* list(struct Parser* parser)
 {
@@ -527,8 +527,8 @@ PipelinesList* list(struct Parser* parser)
 
 /*
 pipeline_list : pipeline_list separator pipeline
-			  | pipeline_list separator
-			  |                         pipeline
+              | pipeline_list separator
+              |                         pipeline
 */
 PipelinesList* pipeline_list(struct Parser* parser)
 {
@@ -561,7 +561,7 @@ PipelinesList* pipeline_list(struct Parser* parser)
 
 /*
 separator : separator_op linebreak
-		  | newline_list
+          | newline_list
 */
 enum RunningMode separator(struct Parser* parser)
 {
@@ -585,7 +585,7 @@ enum RunningMode separator(struct Parser* parser)
 
 /*
 separator_op : ASYNC_LIST
-			 | SEQ_LIST
+             | SEQ_LIST
 */
 enum RunningMode separator_op(struct Parser* parser) 
 {
@@ -611,9 +611,9 @@ enum RunningMode separator_op(struct Parser* parser)
 
 /*
 compound_list :              term
-			  | newline_list term
-			  |              term newline_list
-			  | newline_list term newline_list
+              | newline_list term
+              |              term newline_list
+              | newline_list term newline_list
 */
 CommandsList* compoud_list(struct Parser* parser)
 {
@@ -631,9 +631,9 @@ CommandsList* compoud_list(struct Parser* parser)
 
 /*
 term : cc_list term
-	 | list    term
-	 | list
-	 | cc_list
+     | list    term
+     | list
+     | cc_list
 */
 CommandsList* term(struct Parser* parser)
 {
@@ -668,8 +668,8 @@ CommandsList* term(struct Parser* parser)
 
 /*
 cc_list : cc_list newline_list compound_command
-		|                      compound_command
-		|         newline_list compound_command
+        |                      compound_command
+        |         newline_list compound_command
 */
 CompoundCommandsList* cc_list(struct Parser* parser)
 {
@@ -704,8 +704,8 @@ CompoundCommandsList* cc_list(struct Parser* parser)
 
 /*
 compound_command: for_clause
-				| if_clause
-				| while_clause
+                | if_clause
+                | while_clause
 */
 struct AstNode* compound_command(struct Parser* parser)
 {
@@ -726,7 +726,7 @@ struct AstNode* compound_command(struct Parser* parser)
 
 /*
 if_clause : If compound_list Then compound_list else_part Fi
-		  | If compound_list Then compound_list           Fi
+          | If compound_list Then compound_list           Fi
 */
 struct AstNode* if_clause(struct Parser* parser)
 {
@@ -854,7 +854,7 @@ CommandsList* do_group(struct Parser* parser)
 
 /*
 for_clause : For WORD linebreak                          do_group
-		   | For WORD linebreak In wordlist newline_list do_group
+           | For WORD linebreak In wordlist newline_list do_group
 */
 struct AstNode* for_clause(struct Parser* parser)
 {
@@ -899,11 +899,11 @@ struct AstNode* for_clause(struct Parser* parser)
 
 /*
 wordlist : wordlist WORD
-		 | wordlist PARAMETER_EXPANSION
-		 | wordlist arithm_expression
-		 |          WORD
-		 |          PARAMETER_EXPANSION
-		 |          arithm_expression
+         | wordlist PARAMETER_EXPANSION
+         | wordlist arithm_expression
+         |          WORD
+         |          PARAMETER_EXPANSION
+         |          arithm_expression
 */
 Wordlist* wordlist(struct Parser* parser)
 {
