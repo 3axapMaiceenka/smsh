@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-c -Wall
-LIBS=
+LIBS=-lreadline -ltinfo
 INCLUDES=-I include
 SRCDIR=src
 BINDIR=build

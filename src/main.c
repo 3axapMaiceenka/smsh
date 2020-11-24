@@ -1,196 +1,40 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
 #include "shell.h"
 #include "parser.h"
 #include "hashtable.h"
 #include "utility.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
-/*static void _test_hashtable()
-{
-	const char* keys[] = { "key0", "abcd", "1234567", "ooooooooooo", "key1", "key2", "key3", "key4", "qwerty", "poiuy", "test" };
-	const char* values[] = { "0",      "1",    "2",         "3",         "4",    "5",    "6",     "7",   "8",       "9",    "10" };
-
-	struct Hashtable* h = create_hashtable(128);
-
-	for (size_t i = 0; i < sizeof(keys) / sizeof(char*); i++)
-	{
-		insert(h, keys[i], values[i]);
-	}
-
-	assert(h->size == (sizeof(keys) / sizeof(char*)));
-
-	for (size_t i = 0; i < sizeof(keys) / sizeof(char*); i++)
-	{
-		char** value = get(h, keys[i]);
-
-		assert(value);
-		assert(!strcmp(*value, values[i]));
-
-		if (i % 2)
-		{
-			erase(h, keys[i]);
-			assert(!get(h, keys[i]));
-		}
-	}
-
-	destroy_hashtable(&h);
-}*/
-
-static void _test_(const char* string)
+static void _test_(char* input)
 {
 	struct Shell* shell = start();
 
-	fprintf(stdout, "Input:\n%s\n", string);
-	char* test = copy_string(string);
-
-	initialize(shell, test);
+	initialize(shell, input);
 	shell->program = parse(shell->parser);
 	execute_print(shell, shell->program);
-	stop(shell);
 
-	free(test);
+	stop(shell);
 }
 
-int main()
+int main(int argc, char** argv)
 {
-	/*Tests0*/
-	//_test_("");
-	//_test_("1234567890");
-	//_test_("ksdmksmfiookosfmjdsjfiewkfjknfgirewnj");
-	//_test_("./test test0");
-	//_test_("ls -b");
-	//_test_("shitstisjisjtios sjiotjisjtjisj00");
+    while (1) 
+    {
+        char* input = readline("$ ");
 
-	/*Tests1*/
-	//_test_("''");
-	//_test_("'exec'");
-	//_test_("'0943024302o4i40op2iop3i4op3i3op24oi4o32i4op4'");
-	//_test_("'1234567890' '1234567890'");
-	//_test_("dkkfdkfld '1234567890'");
-	//_test_("'1234567890' rejiowjriewr");
-	//_test_("123'456789'");
-	//_test_("123'456'789");
-	//_test_("'123'456789");
-	//_test_("123'45'67'89'0");
-	//_test_("'123''456'");
-	//_test_("123'456'789'0'		'012'345'678''90'");
-	//_test_("'shdj'3829'ajij'39203902'sdsdksd'jskdjsld'2903902'					'323213'321321312'3213213123''12313'");
+        if (!input)
+        {
+            break;
+        }
 
-	/*Tests2*/
-	//_test_("exec 123 1234 12345 123456");
-	//_test_("'1231' '3434' 434'4343243'  4'3432'43'24324' '3243242'");
-	//_test_("'3232' '1' '2' 3 4 '5'");
+        _test_(input);
 
-	/*Tests3*/
-	//_test_("=");
-	//_test_("var=");
-	//_test_("var=6");
-	//_test_("var= cmd_name");
-	//_test_("var=ieofjejerirjeirjierjierj");
-	//_test_("var=2 var0=3\tvar1=4\tvar2=5");
-	//_test_("var=2     echo 000");
-	//_test_("var=5 var=7");
-	//_test_("var=2 var0=3     ec'h'o 03'-403'");
-	//_test_("===");
-
-	/*Test4*/
-	//_test_("command >file.txt");
-	//_test_("comamnd>file.txt");
-	//_test_("command>file1.txt<file2.txt");
-	//_test_("command > file1.txt < file2.txt");
-	//_test_("command arg1 'arg2' >file.txt arg3 '>' <fil0.txt");
-	//_test_("command > test1.txt > test2.txt > test3.txt < input.txt");
-	//_test_("command > test1.txt > 'test2.txt' < ekjwn'kwerojkj'rewjre");
-	//_test_("command >");
-	//_test_("command > <");
-	//_test_("command > '>'.txt");
-
-	/*Test5*/
-	//_test_("$");
-	//_test_("$variable");
-	//_test_("var1=4 var2=$var1");
-	//_test_("cmd_name=echo $cmd_name");
-	//_test_("cmd_name=echo $cmd_name test");
-	//_test_("cmd_name=echo arg1=test arg2=$test $cmd_name $arg1 $arg2");
-	//_test_("var=3 echo '$var'");
-	//_test_("var=abcd 'cmd_name'$var");
-	//_test_("var=abcd var2=poiu cmd_name $var$var2");
-	//_test_("input=input.txt output=output.txt cmd_name=command arg=argument $cmd_name >$output $arg < $input");
-	//_test_("input=input.txt output=output.txt cmd_name=command arg=argument '$cmd_name' >$'output' $'arg' < $'input'");
-	//_test_("$37847384$");
-	//_test_("echo $");
-	//_test_("$$$$$$");
-
-	/*Test6*/
-	//_test_("var=$((2*/3))");
-	//_test_("var=$((eif))");
-	//_test_("var=$((2/3)))");
-	//_test_("var=5 $((3+2))");
-	//_test_("$((1+1))");
-	//_test_("cmd_name $((4+2))");
-	//_test_("cmd_name $((2*1 / (2))) $((1 + 2 + 3 - 4 )) ");
-	//_test_("var=$((5+6)) cmd_name $var $((2*1-3))");
-	//_test_("var=$((3 - 2 +--+12 / (4 * 2 - (4 / 2)) * 10 + (((-(1))))))");
-	//_test_("var=$((4/2 -     1   + (-6 / +- 5))) cmd_name $((3- 2+ 1- (-(-(-(4)))) * 3 / 2))");
-
-	/*Test7*/
-	//_test_("var=$((2+3-1)) cmd_name $((1 + $var - 5))");
-	//_test_("var=$((2+3-1)) var=$(($var)) cmd_name $((1 + $var * $var -(-(($var)))))");
-	//_test_("var=$((2+3-1)) var0=$((1 + $var - -1 * $var)) cmd_name $((1 + $var - 5 + $var0))");
-
-	/*Test8*/
-	//_test_("cmd");
-	//_test_("cmd1| cmd2");
-	//_test_("cmd1 |cmd2");
-	//_test_("cmd1 arg1|cmd2 arg2");
-	//_test_("var=$((2 + 3)) cmd_name arg1 $var | \n var2=3 cmd_name2 arg arg2 arg3 $var2 $var");
-	//_test_("cmd1|cmd2| cmd3 |   cmd4   |cmd5 | \n\n\n\n\n cmd6 |cmd7 | \n cmd8 |\t\n cmd9");
-	//_test_("cmd_name \n | cmd_name2");
-
-	/*Test9*/
-	//_test_("cmd");
-	//_test_("cmd\n");
-	//_test_("\ncmd\n");
-	//_test_("cmd1 \n cmd2");
-	//_test_("cmd1 | cmd2\n cmd3 \n cmd4");
-	//_test_("var=$((2+1)) cmd_name >output.txt $var <input.txt | cmd1 arg1 arg2 arg3\n cmd2 $var >output.txt |test\n cmd\n");
-	//_test_("cmd1 & cmd2");
-	//_test_("cmd1;cmd2");
-	//_test_("cmd1& cmd2;");
-	//_test_("cmd1; cmd2;");
-	//_test_("cmd1 | cmd2& cmd3;cmd4");
-	//_test_("var=0\nvar0=1\ncmd1 arg1 arg2 $var | cmd2 $var0\nvar=$var0\ncmd3|cmd4 &\n");
-	//_test_("cmd&\ncmd0;");
-	//_test_("cmd&cmd2;cmd3;cm4;cmd5 | cmd6;cm7&");
-
-	/*Test10*/
-	//_test_("if cmd1\nthen\n\tcmd2\nfi");
-	//_test_("if cmd1 then\ncmd2\nelse\ncmd3\nfi");
-	//_test_("var=$((2+1*3))\ncmd1>output.txt $var\n\nif cmd0\nthen\n\tcmd2\nfi\nvar0=$var\ncmd_name arg arg0\nif test\nthen\n\tcmd392 arg arg\nelse\ncmd <input.txt\nfi\n");
-	//_test_("if a\nthen\n\tif b\n\tthen\n\tcmd\n\tfi\nelse\ncmd2\nfi\n");
-	//_test_("cmd1 arg1 >output.txt | cmd2\n\nif test\nthen\n\tcmd0|cmd1\n\tif a\n\tthen\n\t\tcmd|cmd2\n\tfi\nelse\n\tcmd & cmd;\nfi");
-	//_test_("if cmd\nthen fi");
-
-	/*Test11*/
-	//_test_("while cmd\ndo\n\tcmd | cmd2 >output.txt\ndone");
-	//_test_("cmd <input arg0\nif condition\nthen\n\twhile cond0\n\tdo\n\t\tvar=$((2*1 - 4 /5))\n\t\tcmd | cmd&\n\t\tcommnd $var arg0;\n\tdone\nfi\n");
-	//_test_("while condition\ndo\ndone\n");
-	//_test_("while condidiotn\ncmd\ndone");
-	//_test_("while condition\ndo\ncmd\n");
-	//_test_("while do\ncmd\ndone");
-	//_test_("while cmd&\ndo\n\twhile cmd;\n\tdo\n\t\tcmd0 | cmd1 | cmd2\n\tdone\ndone\n");
-
-	//_test_hashtable();
+        free(input);
+    }
 	
-	/*Test12*/
-	_test_("for i\ndo\n\tcmd arg0 <input | cmd0&\ndone");
-	_test_("for i in $((2+1)) $((1*0)) test\ndo\n\tcmd arg0 $i\ndone");
-	_test_("for\ndo\ncmd\ndone");
-	_test_("for i in $((2+3/2))\ncmd\ndone");
-	_test_("var=5\ncmd $var\nfor i in var $var\ndo\n\techo $i '$var';\ndone\necho $i");
-	_test_("for i in 'for' $((2+3))\ndo\n\tfor j\n\tdo\n\t\tcmd $i $j\n\tdone\ndone");
-
 	return 0;
 }
