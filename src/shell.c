@@ -1,8 +1,37 @@
 #include "shell.h"
 #include "utility.h"
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern char** environ;
+
+static void init_from_env(struct Shell* shell)
+{
+	size_t cap = 32;
+	size_t size = 0;
+	char* buf = malloc(sizeof(char) * cap);
+
+	for (char** str = environ; *str; str++)
+	{
+		const char* value = strchr(*str, '=');
+		size = value - *str + 1;
+
+		if (size > cap)
+		{
+			cap = size;
+			buf = realloc(buf, cap * sizeof(char));
+		}
+
+		strncpy(buf, *str, size);
+		buf[size - 1] = '\0';
+
+		insert(shell->variables, buf, value + 1);
+	}
+
+	free(buf);
+}
 
 struct Shell* start()
 {
@@ -14,6 +43,8 @@ struct Shell* start()
 
 	shell->parser->scanner = shell->scanner;
 	shell->parser->error = calloc(1, sizeof(struct Error));
+
+	init_from_env(shell);
 
 	return shell;
 }
