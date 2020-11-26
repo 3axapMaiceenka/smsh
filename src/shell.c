@@ -1,6 +1,8 @@
 #include "shell.h"
 #include "utility.h"
 #include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,6 +70,7 @@ void initialize(struct Shell* shell, char* buffer)
 {
 	shell->scanner->buffer = buffer;
 	shell->scanner->position = 0;
+	shell->parser->parsing_arithm_expr = 0;
 	shell->parser->current_token = get_next_token(shell->scanner, &shell->parser->parsing_arithm_expr);
 }
 
@@ -119,7 +122,7 @@ static const char* expand_token(struct Shell* shell, struct Token* token)
 
 static int is_integer(const char* string)
 {
-	if (*string == '-' || (*string >= '1' && *string <= '9'))
+	if (*string == '-' || (*string >= '0' && *string <= '9'))
 	{
 		string++;
 
@@ -157,7 +160,7 @@ int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 			{
 				if (!shell->execution_error->error)
 				{
-					set_error(shell->execution_error, "Execution error! Invalid parameter expansion inside arithmetic expansion!");
+					set_error(shell->execution_error, "invalid parameter expansion inside arithmetic expansion!");
 				}
 			}
 		} break;
@@ -197,12 +200,244 @@ int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 	return 0;
 }
 
+static void exec_compound_cmd_list(struct Shell* shell, CompoundCommandsList* cmd_list)
+{
+	printf("Compount commands execution is not implemented yet\n");
+}
+
+static void exec_assignment(struct Shell* shell, struct AstAssignment* assignment)
+{
+	if (assignment->expression->node_type == AST_WORD)
+	{
+		struct AstWord* word = (struct AstWord*)assignment->expression->actual_data;
+		set_variable(shell, expand_token(shell, assignment->variable), expand_token(shell, &word->word));
+	}
+	else // assignment->node_type == AST_ARITHM_EXPR
+	{
+		char buffer[11]; // int is maximum 11 digits long
+		sprintf(buffer, "%d", execute_arithm_expr(shell, (struct AstArithmExpr*)assignment->expression->actual_data));
+
+		if (!shell->execution_error->error)
+		{
+			set_variable(shell, expand_token(shell, assignment->variable), buffer);
+		}
+	}
+}
+
+static void exec_assignments_list(struct Shell* shell, AssignmentsList* assignments_list)
+{
+	for (struct Node* node = assignments_list->head; node; node = node->next)
+	{
+		exec_assignment(shell, (struct AstAssignment*)node->data);
+
+		if (shell->execution_error->error)
+		{
+			return;
+		}
+	}
+}
+
+// TODO: add i/o redirection
+static int start_process(const char* cmd_name, char** cmd_args, enum RunningMode mode)
+{
+	pid_t pid = fork();
+
+	switch (pid)
+	{
+		case -1:
+		{
+			return -1;
+		} 
+		case 0:
+		{
+			if (execvp(cmd_name, cmd_args) == -1)
+			{
+				return -1;
+			}
+		} break;
+		default:
+		{
+			if (mode == FOREGROUND)
+			{
+				int status;
+				do
+				{
+					waitpid(pid, &status, WUNTRACED); // wait while child process is running
+				} while (!WIFEXITED(status) && !WIFSIGNALED(status)); // resume if child process has terminated
+			}
+		} break;
+	}
+
+	return 0;
+}
+
+static void free_cmd_args(char** argv)
+{
+	for (char** ptr = argv; *ptr; ptr++)
+	{
+		free(*ptr);
+	}
+
+	free(argv);
+}
+
+static char** create_cmd_args(struct Shell* shell, const char* cmd_name, Wordlist* command_args)
+{
+	size_t argc = get_list_size(command_args) + 2;
+	char** argv = calloc(argc, sizeof(char*));
+	size_t indx = 0;
+
+	argv[0] = copy_string(cmd_name);
+
+	if (command_args)
+	{
+		for (struct Node* node = command_args->head; node; node = node->next)
+		{
+			struct AstNode* ast_node = (struct AstNode*)node->data;
+
+			if (ast_node->node_type == AST_WORD)
+			{
+				struct AstWord* ast_word = (struct AstWord*)ast_node->actual_data;
+				argv[++indx] = copy_string(expand_token(shell, &ast_word->word));
+			}
+			else
+			{
+				struct AstArithmExpr* arithm_expr = (struct AstArithmExpr*)ast_node->actual_data;
+
+				char buffer[11]; // int is maximum 11 digits long
+				sprintf(buffer, "%d", execute_arithm_expr(shell, arithm_expr));
+		
+				if (shell->execution_error->error)
+				{
+					free_cmd_args(argv);
+					return NULL;
+				}
+
+				argv[++indx] = copy_string(buffer);
+			}
+		}
+	}
+
+	return argv;
+}
+
+// For now just calls fork() and execvp()
+static void exec_simple_command(struct Shell* shell, struct AstSimpleCommand* simple_command, enum RunningMode mode)
+{
+	// TODO: add i/o redirection, builtin commands
+	
+	if (simple_command->assignment_list)
+	{
+		exec_assignments_list(shell, simple_command->assignment_list);
+	}
+
+	if (shell->execution_error->error)
+	{
+		return;
+	}
+
+	if (simple_command->command_name)
+	{
+		const char* cmd_name = expand_token(shell, &simple_command->command_name->word);
+		char** cmd_args = create_cmd_args(shell, cmd_name, simple_command->command_args);
+
+		if (shell->execution_error->error)
+		{
+			return;
+		}
+
+		if (start_process(cmd_name, cmd_args, mode) == -1)
+		{
+			char* error_mes = concat_strings(cmd_name, " - command not found");
+			set_error(shell->execution_error, error_mes);
+			free(error_mes);
+		}
+
+		free_cmd_args(cmd_args);
+	}
+}
+
+static void exec_pipeline(struct Shell* shell, struct AstPipeline* pipe)
+{
+	if (pipe)
+	{
+		for (struct Node* node = pipe->pipeline->head; node; node = node->next)
+		{
+			// TODO: add piping. No i/o redirection for now
+			exec_simple_command(shell, (struct AstSimpleCommand*)node->data, pipe->mode);
+
+			if (shell->execution_error->error)
+			{
+				return;
+			}
+		}
+	}
+}
+
+static void exec_pipeline_list(struct Shell* shell, PipelinesList* pipe_list)
+{
+	if (pipe_list)
+	{
+		for (struct Node* node = pipe_list->head; node; node = node->next)
+		{
+			exec_pipeline(shell, (struct AstPipeline*)node->data);
+
+			if (shell->execution_error->error)
+			{
+				return;
+			}
+		}
+	}
+}
+
+static int handle_error(struct Error* error, const char* prompt)
+{
+	if (error->error)
+	{
+		fprintf(stderr, "%s%s\n", prompt, error->error_message);
+		unset_error(error);
+		return 0;
+	}
+
+	return 1;
+}
+
+int execute(struct Shell* shell, CommandsList* program)
+{
+	if (!handle_error(shell->parser->error, "Syntax error: "))
+	{
+		return 1;
+	}
+
+	if (program)
+	{
+		for (struct Node* node = program->head; node; node = node->next)
+		{
+			struct AstNode* ast_node = (struct AstNode*)node->data;
+
+			if (ast_node->node_type == AST_PIPELINE_LIST)
+			{
+				exec_pipeline_list(shell, (PipelinesList*)ast_node->actual_data);
+			}
+			else // ast_node->node_type == AST_COMPOUND_COMMANDS_LIST
+			{
+				exec_compound_cmd_list(shell, (CompoundCommandsList*)ast_node->actual_data);
+			}
+
+			if (!handle_error(shell->execution_error, "Error: "))
+			{
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
 void execute_print(struct Shell* shell, CommandsList* program)
 {
-	if (shell->parser->error->error)
+	if (!handle_error(shell->parser->error, "Syntax error: "))
 	{
-		fprintf(stderr, "Syntax error: %s\n", shell->parser->error->error_message);
-		destroy_list(&program);
 		return;
 	}
 
@@ -289,9 +524,8 @@ void execute_print(struct Shell* shell, CommandsList* program)
 												arithm_expr = expr->actual_data;
 												sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
 
-												if (shell->execution_error->error)
+												if (!handle_error(shell->execution_error, "Error: "))
 												{
-													fprintf(stderr, "%s\n", shell->execution_error->error_message);
 													return;
 												}
 
@@ -326,9 +560,8 @@ void execute_print(struct Shell* shell, CommandsList* program)
 											struct AstArithmExpr* arithm_expr = node->actual_data;
 											printf("(Arithmetic expansion) %d\n", execute_arithm_expr(shell, arithm_expr));
 
-											if (shell->execution_error->error)
+											if (!handle_error(shell->execution_error, "Error: "))
 											{
-												fprintf(stderr, "%s\n", shell->execution_error->error_message);
 												return;
 											}
 										}
