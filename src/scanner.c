@@ -244,7 +244,7 @@ static void arithm_read_param_exp(struct Scanner* scanner, struct Token* token)
 	{
 		c = buffer[++position];
 
-		if (c != ' ' && c != '\t' && c != '\n' && c != '\0' && c != ')')
+		if (c != ' ' && c != '\t' && c != '\n' && c != '\0' && c != ')' && c != '/' && c != '*' && c != '+' && c != '-')
 		{
 			append_char(&token->word, c);
 		}
