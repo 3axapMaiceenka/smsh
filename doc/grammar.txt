@@ -1,0 +1,129 @@
+Tokens:
+
+	NEWLINE             '\n'
+	WORD
+	NAME
+	PARAMETER_EXPANSION '$...'
+	INPUT_REDIRECT      '<'
+	OUTPUT_REDIRECT     '>'
+	PIPE                '|'
+	ASYNC_LIST          '&'
+	SEQ_LIST            ';'
+	IF                  'if'
+	ELSE                'else'
+	FI                  'fi'
+	THEN                'then'
+	FOR                 'for'
+	WHILE               'while'
+	DO                  'do'
+	DONE                'done'
+	IN                  'in'
+	INTEGER
+	PLUS                '+'
+	MINUS               '-'
+	MULTIPLY            '*'
+	DIVIDE              '/'
+	LPAR                '('
+	RPAR                ')'
+	END
+
+compound_list :              term
+              | newline_list term
+              |              term newline_list
+              | newline_list term newline_list
+
+term : cc_list term
+     | list    term
+     | list
+     | cc_list
+
+cc_list : cc_list newline_list compound_command
+        |                      compound_command
+        |         newline_list compound_command
+
+compound_command: for_clause
+                | if_clause
+                | while_clause
+
+if_clause : If compound_list Then compound_list else_part Fi
+          | If compound_list Then compound_list           Fi
+
+else_part: Else compound_list
+
+while_clause: While compound_list do_group
+
+do_group : Do compound_list Done
+
+for_clause : For WORD linebreak                          do_group
+           | For WORD linebreak In wordlist newline_list do_group
+
+wordlist : wordlist WORD
+         | wordlist PARAMETER_EXPANSION
+         | wordlist arithm_expression
+         |          WORD
+         |          PARAMETER_EXPANSION
+         |          arithm_expression
+
+list : newline_list pipeline_list
+     |              pipeline_list
+
+pipeline_list : pipeline_list separator pipeline
+              | pipeline_list separator
+              |                         pipeline
+
+separator : separator_op linebreak
+          | newline_list
+
+separator_op : ASYNC_LIST
+             | SEQ_LIST
+
+newline_list :              NEWLINE
+             | newline_list NEWLINE
+
+linebreak : newline_list
+          | 'empty'
+
+simple_command : cmd_prefix cmd_name cmd_suffix
+               | cmd_prefix cmd_name
+               | cmd_prefix
+               |            cmd_name cmd_suffix
+               |            cmd_name
+
+cmd_prefix :            NAME'='WORD
+           |            NAME'='PARAMETER_EXPANSION
+           |            NAME'='arithm_expression
+           | cmd_prefix NAME'='WORD
+           | cmd_prefix NAME'='PARAMETER_EXPANSION
+           | cmd_prefix NAME'='arithm_expression
+
+cmd_name : WORD
+         | PARAMETER_EXPANSION
+
+cmd_suffix :	        io_redirect
+           | cmd_suffix io_redirect
+           |            WORD
+           |            PARAMETER_EXPANSION
+           |            arithm_expression
+           | cmd_suffix WORD
+           | cmd_suffix PARAMETER_EXPANSION
+           | cmd_suffix arithm_expression
+
+arithm_expression : arithm_term
+                  | arithm_term (PLUS  arithm_term)*
+                  | arithm_term (MINUS arithm_term)*
+
+arithm_term : arithm_factor
+            | arithm_factor (MULTIPLY arithm_factor)*
+            | arithm_factor (DIVIDE   arithm_factor)*
+
+arithm_factor : INTEGER
+              | PARAMETER_EXPANSION
+              | LPAR arithm_expression RPAR
+              | PLUS  arithm_factor
+              | MINUS arithm_factor
+
+filenme: WORD
+       | PARAMETER_EXPANSION
+
+io_redirect : INPUT_REDIRECT  filename
+            | OUTPUT_REDIRECT filename
