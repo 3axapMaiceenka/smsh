@@ -95,6 +95,18 @@ int set_variable(struct Shell* shell, const char* var_name, const char* var_valu
 	}
 }
 
+const char* get_variable(struct Shell* shell, const char* var_name)
+{
+	char** value = get(shell->variables, var_name);
+
+	if (value)
+	{
+		return *value;
+	}
+	
+	return NULL;
+}
+
 static const char* expand_token(struct Shell* shell, struct Token* token)
 {
 	switch (token->type)
@@ -105,15 +117,14 @@ static const char* expand_token(struct Shell* shell, struct Token* token)
 		} break;
 		case PARAMETER_EXPANSION:
 		{
-			char** value = get(shell->variables, token->word.buffer);
-			if (value)
-			{
-				return *value;
-			}
-			else
+			const char* value = get_variable(shell, token->word.buffer);
+			
+			if (!value)
 			{
 				return "";
 			}
+			
+			return value;
 		} break;
 		case NAME:
 		{
@@ -218,7 +229,7 @@ static void exec_assignment(struct Shell* shell, struct AstAssignment* assignmen
 	}
 	else // assignment->node_type == AST_ARITHM_EXPR
 	{
-		char buffer[11]; // int is maximum 11 digits long
+		char buffer[12]; // int is maximum 11 digits long
 		sprintf(buffer, "%d", execute_arithm_expr(shell, (struct AstArithmExpr*)assignment->expression->actual_data));
 
 		if (!shell->execution_error->error)
@@ -272,7 +283,7 @@ static int start_process(const char* cmd_name, char** cmd_args, int infd, int ou
 			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
 		}
 
-		if (execvp(cmd_name, cmd_args) == -1)
+		if (execv(cmd_name, cmd_args) == -1)
 		{
 			return 127; // If a command is not found, the exit status shall be 127
 		}
@@ -289,14 +300,13 @@ static int start_process(const char* cmd_name, char** cmd_args, int infd, int ou
 
 				if (WIFEXITED(status))
 				{
-                    return WEXITSTATUS(status);
-                }
+					return WEXITSTATUS(status);
+				}
 
-                if (WIFSIGNALED(status))
+				if (WIFSIGNALED(status))
 				{
-                    return 129; //  The exit status of a command that terminated because it received a signal shall be reported as greater than 128
-                }
-
+					return 129; //  The exit status of a command that terminated because it received a signal shall be reported as greater than 128
+				}
 			} while (!WIFEXITED(status) && !WIFSIGNALED(status));
 		}
 	}
@@ -374,6 +384,90 @@ static int get_io_redir_fd(struct Shell* shell, struct AstIORedirect* ast_redire
 	return fd;
 }
 
+static void handle_io_redir_error(struct Shell* shell, int fd)
+{
+	set_error(shell->execution_error, IO_REDIRECT_ERROR_MES);
+	close_fd_safely(fd);
+}
+
+static void handle_unexisting_cmd_error(struct Shell* shell, const char* path)
+{
+	char* error_mes = concat_strings(path, " - command not found");
+	set_error(shell->execution_error, error_mes);
+	free(error_mes);
+}
+
+static char* find_executable(struct Shell* shell, const char* exec_name)
+{
+	if (strchr(exec_name, '/'))
+	{
+		return copy_string(exec_name);
+	}
+
+	const char* path = get_variable(shell, "PATH");
+	char* _path = NULL;
+
+	if (!path) // if PATH isn't defined, the path list defaults to the current directory followed by the list of directories returned by confstr(_CS_PATH)
+	{
+		size_t len = confstr(_CS_PATH, NULL, (size_t)0);
+		if (!len) // path is undefined
+		{
+			return NULL;
+		}
+
+		_path = malloc(sizeof(char) * len);
+		confstr(_CS_PATH, _path, len);
+	}
+	else
+	{
+		_path = copy_string(path);
+	}
+
+	char* dir = strtok(_path, ":");
+	char* full_path = NULL;
+	size_t exec_name_len = strlen(exec_name);
+
+	while (dir)
+	{
+		size_t len = strlen(dir);
+		full_path = calloc(exec_name_len + len + 2, sizeof(char));
+
+		strcat(full_path, dir);
+		full_path[len] = '/';
+		strcat(full_path, exec_name);
+
+		if (access(full_path, X_OK) == 0)
+		{
+			break;
+		}
+
+		dir = strtok(NULL, ":");
+		free(full_path);
+		full_path = NULL;
+	}
+
+	free(_path);
+
+	return full_path;
+}
+
+// new_fd is a pointer to stdandart input file descriptor, fd is standart output file descriptor or vice versa
+static int redirect_io(struct Shell* shell, struct AstIORedirect* ast_io_redir, int* new_fd, int fd)
+{
+	if (ast_io_redir)
+	{
+		close_fd_safely(*new_fd);
+
+		if ((*new_fd = get_io_redir_fd(shell, ast_io_redir)) == -1)
+		{
+			handle_io_redir_error(shell, fd); // closes fd and sets error
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* simple_command, int infd, int outfd, int wait)
 {	
 	if (simple_command->assignment_list)
@@ -389,32 +483,36 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 	if (simple_command->command_name)
 	{
 		const char* cmd_name = expand_token(shell, &simple_command->command_name->word);
-		char** cmd_args = create_cmd_args(shell, cmd_name, simple_command->command_args);
+		char* path = find_executable(shell, cmd_name);	
+		if (!path)
+		{
+			handle_unexisting_cmd_error(shell, cmd_name);
+			close_fd_safely(infd);
+			close_fd_safely(outfd);
+			return 127;
+		}
 
+		char** cmd_args = create_cmd_args(shell, path, simple_command->command_args);
 		if (shell->execution_error->error)
 		{
-			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
-		}
-
-		if (simple_command->input_redirect && ((infd = get_io_redir_fd(shell, simple_command->input_redirect)) == -1))
-		{
-			set_error(shell->execution_error, IO_REDIRECT_ERROR_MES);
-			free_cmd_args(cmd_args);
-			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
-		}
-
-		if (simple_command->output_redirect && ((outfd = get_io_redir_fd(shell, simple_command->output_redirect)) == -1))
-		{
-			set_error(shell->execution_error, IO_REDIRECT_ERROR_MES);
-			free_cmd_args(cmd_args);
 			close_fd_safely(infd);
+			close_fd_safely(outfd);
 			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
 		}
 
-		int rc = start_process(cmd_name, cmd_args, infd, outfd, wait);
+		if (redirect_io(shell, simple_command->input_redirect, &infd, outfd) == -1)
+		{
+			free_cmd_args(cmd_args);
+			free(path);
+		}
 
-		close_fd_safely(infd);
-		close_fd_safely(outfd);
+		if (redirect_io(shell, simple_command->output_redirect, &outfd, infd) == -1)
+		{
+			free_cmd_args(cmd_args);
+			free(path);
+		}
+
+		int rc = start_process(path, cmd_args, infd, outfd, wait);		
 
 		switch (rc)
 		{
@@ -422,16 +520,17 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 			{
 				set_error(shell->execution_error, "can't create a child process");
 			} break;
-			case 127: // execvp() failed
+			case 127: // execv() failed
 			{
-				char* error_mes = concat_strings(cmd_name, " - command not found");
-				set_error(shell->execution_error, error_mes);
-				free(error_mes);
+				handle_unexisting_cmd_error(shell, path);
 			} break;
 			default: break; // child process terminated or was killed by a signal
 		}
 
+		close_fd_safely(infd);
+		close_fd_safely(outfd);
 		free_cmd_args(cmd_args);
+		free(path);
 
 		return rc;
 	}
@@ -439,17 +538,35 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 	return 0;
 }
 
-static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipe)
+static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 {
-	//TODO: add pipelining
-	if (pipe)
+	//TODO: add waiting for all pipeline's commands to terminate
+	if (pipeline) 
 	{
+		int wait = 0;
 		int rc = 0;
-		int wait = pipe->mode == FOREGROUND ? 1 : 0;
+		int pipefd[2] = { 0, 1 };
 
-		for (struct Node* node = pipe->pipeline->head; node; node = node->next)
+		for (struct Node* node = pipeline->pipeline->head; node; node = node->next)
 		{
-			rc = exec_simple_command(shell, (struct AstSimpleCommand*)node->data, 0, 1, wait); // TODO: change 0, 1 to pipe fds
+			int infd = pipefd[0];
+
+			if (node->next) // if isn't the last command in the pipeline
+			{
+				pipe(pipefd);
+			}
+			else
+			{
+				// If the pipeline is not in the background, the shell shall wait for the last command specified in the pipeline to complete
+				if (pipeline->mode == FOREGROUND) 
+				{
+					wait = 1;
+				}
+
+				pipefd[1] = 1;
+			}
+
+			rc = exec_simple_command(shell, (struct AstSimpleCommand*)node->data, infd, pipefd[1], wait); // fds are closed
 
 			if (shell->execution_error->error)
 			{
@@ -467,14 +584,13 @@ static int exec_pipeline_list(struct Shell* shell, PipelinesList* pipe_list)
 {
 	// The exit status of an asynchronous list shall be zero
 	// The exit status of a sequential list shall be the exit status of the last command in the list
-
 	if (pipe_list)
 	{
 		int rc = 0;
 
 		for (struct Node* node = pipe_list->head; node; node = node->next)
 		{
-			rc = exec_pipeline(shell, (struct AstPipeline*)node->data); // if pipeline is running in the backgound mode, exec_pipeline() returns 0
+			rc = exec_pipeline(shell, (struct AstPipeline*)node->data); // if pipeline is running in the background mode, exec_pipeline() returns 0
 
 			if (shell->execution_error->error)
 			{

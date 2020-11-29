@@ -23,6 +23,8 @@ void initialize(struct Shell* shell, char* buffer);
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value); // returns 1 if the variable already exists
 
+const char* get_variable(struct Shell* shell, const char* var_name);
+
 int execute(struct Shell* shell, CommandsList* program);
 
 void execute_print(struct Shell* shell, CommandsList* program);
