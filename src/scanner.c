@@ -1,9 +1,26 @@
 #include "scanner.h"
 #include <string.h>
 
-//TODO: change
-static const char* Keywords[] = { "if", "else", "fi", "then", "while", "do", "done", "for", "in" };
-static const enum TokenType Types[] = { IF, ELSE, FI, THEN, WHILE, DO, DONE, FOR, IN }; // temp
+struct Keyword
+{
+	enum TokenType type;
+	const char* word;
+};
+
+static const struct Keyword keywords[] = 
+{
+	{ IF, "if" },
+	{ ELSE, "else" },
+	{ FI, "fi" },
+	{ THEN, "then" },
+	{ WHILE, "while" },
+	{ DO, "do" },
+	{ DONE, "done" },
+	{ FOR, "for" },
+	{ IN, "in" }
+};
+
+static const size_t keywords_numb = sizeof(keywords) / sizeof(struct Keyword);
 
 static void free_buffer(struct Buffer* buffer)
 {
@@ -13,19 +30,19 @@ static void free_buffer(struct Buffer* buffer)
 	buffer->buffer = NULL;
 }
 
-static void is_keyword(struct Token* token) // temp
+static void is_keyword(struct Token* token)
 {
 	if (!token->word.buffer)
 	{
 		return;
 	}
 
-	for (int i = 0; i < (sizeof(Keywords) / sizeof(char*)); i++)
+	for (size_t i = 0; i < keywords_numb; i++)
 	{
-		if (!strcmp(Keywords[i], token->word.buffer))
+		if (!strcmp(keywords[i].word, token->word.buffer))
 		{
 			free_buffer(&token->word);
-			token->type = Types[i];
+			token->type = keywords[i].type;
 			return;
 		}
 	}
@@ -197,7 +214,7 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 		}
 
 		if (buffer[position] == ' ' || buffer[position] == '\n' || buffer[position] == '\t' || buffer[position] == '|' || buffer[position] == '\0'
-									|| buffer[position] == ';'  || buffer[position] == '&')
+			                        || buffer[position] == ';'  || buffer[position] == '&')
 		{
 			break;
 		}
@@ -209,7 +226,7 @@ struct Token get_next_token(struct Scanner* scanner, int* arithm_expr_beginning)
 
 		if (!contains_quotes)
 		{
-			is_keyword(&token); // change token.type if keyword
+			is_keyword(&token); // changes token.type if keyword
 		}
 	}
 	else
