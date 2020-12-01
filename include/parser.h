@@ -269,10 +269,7 @@ struct AstNode* while_clause(struct Parser* parser);
 //do_group : Do compound_list Done
 CommandsList* do_group(struct Parser* parser);
 
-/*
-for_clause : For WORD linebreak                          do_group
-           | For WORD linebreak In wordlist newline_list do_group
-*/
+//for_clause : For WORD linebreak In wordlist newline_list do_group
 struct AstNode* for_clause(struct Parser* parser);
 
 /*

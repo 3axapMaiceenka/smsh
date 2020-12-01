@@ -852,10 +852,7 @@ CommandsList* do_group(struct Parser* parser)
 	return commands;
 }
 
-/*
-for_clause : For WORD linebreak                          do_group
-           | For WORD linebreak In wordlist newline_list do_group
-*/
+//for_clause : For WORD linebreak In wordlist newline_list do_group
 struct AstNode* for_clause(struct Parser* parser)
 {
 	if (!eat(parser, FOR, get_next_token))
@@ -871,20 +868,24 @@ struct AstNode* for_clause(struct Parser* parser)
 
 	struct AstFor* ast_for = calloc(1, sizeof(struct AstFor));
 	ast_for->variable = ast_word(parser);
-
+	
 	linebreak(parser);
 
-	if (eat(parser, IN, get_next_token))
+	if (!eat(parser, IN, get_next_token))
 	{
-		if (!(ast_for->wordlist = wordlist(parser)))
-		{
-			set_error(parser->error, "invalid 'for' loop!");
-			free_ast_for(ast_for);
-			return NULL;
-		}
-
-		newline_list(parser);
+		set_error(parser->error, "invalid 'for' loop! Expected 'in' token");
+		free_ast_for(ast_for);
+		return NULL;
 	}
+
+	if (!(ast_for->wordlist = wordlist(parser)))
+	{
+		set_error(parser->error, "invalid 'for' loop!");
+		free_ast_for(ast_for);
+		return NULL;
+	}
+
+	newline_list(parser);
 
 	ast_for->body = do_group(parser);
 
