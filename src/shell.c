@@ -214,10 +214,159 @@ int execute_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
 	return 0;
 }
 
+static char* expand_arithm_expr(struct Shell* shell, struct AstArithmExpr* arithm_expr)
+{
+	char* exp = calloc(12, sizeof(char)); // int is maximum 11 digits long
+	sprintf(exp, "%d", execute_arithm_expr(shell, arithm_expr));
+	
+	if (shell->execution_error->error)
+	{
+		free(exp);
+		return NULL;		
+	}
+
+	return exp;
+}
+
+// The exit status of a for command shall be the exit status of the last command that executes
+static int exec_for_loop(struct Shell* shell, struct AstFor* ast_for)
+{
+	const char* var_name = ast_for->variable->word.word.buffer;
+	char** value = get(shell->variables, var_name);
+	char* init_value = NULL;
+	int rc = 0;
+
+	if (!value)
+	{
+		insert(shell->variables, var_name, "");
+	}
+	else
+	{
+		init_value = copy_string(*value);
+	}
+
+	for (struct Node* node = ast_for->wordlist->head; node; node = node->next)
+	{
+		struct AstNode* expr = (struct AstNode*)node->data;
+	
+		if (expr->node_type == AST_WORD)
+		{
+			struct AstWord* word = expr->actual_data;
+			const char* token_value = expand_token(shell, &word->word);
+			set_variable(shell, var_name, token_value);
+		}
+		else // expr->node_type == AST_ARITHM_EXPR
+		{		
+			char* var_value = expand_arithm_expr(shell, (struct AstArithmExpr*)expr->actual_data);
+	
+			if (shell->execution_error->error)
+			{
+				return 1;
+			}
+
+			set_variable(shell, var_name, var_value);
+			free(var_value);
+		}
+
+		rc = execute(shell, ast_for->body);
+
+		if (shell->execution_error->error)
+		{
+			return rc;
+		}
+	}
+
+	if (!value)
+	{
+		erase(shell->variables, var_name);
+	}
+	else
+	{
+		set_variable(shell, var_name, init_value);
+		free(init_value);
+	}
+
+	return rc;
+}
+
+// The exit status of the while loop shall be the exit status of the last body commands list executed, or zero, if none was executed.
+static int exec_while_loop(struct Shell* shell, struct AstWhile* ast_while)
+{
+	int rc = 0;
+	int cond = 0;
+
+	while ((cond = execute(shell, ast_while->condition)) == 0)
+	{
+		rc = execute(shell, ast_while->body);
+
+		if (shell->execution_error->error)
+		{
+			return rc;
+		}
+	}
+
+	if (shell->execution_error->error)
+	{
+		return cond;
+	}
+
+	return rc;
+}
+
+// The exit status of the if command shall be the exit status of the then or else commands list that was executed, or zero, if none was executed
+static int exec_if(struct Shell* shell, struct AstIf* ast_if)
+{
+	int rc = execute(shell, ast_if->condition);
+
+	if (!rc)
+	{
+		rc = execute(shell, ast_if->if_part);
+	}
+	else
+	{
+		if (shell->execution_error->error)
+		{
+			return rc;
+		}
+
+		rc = execute(shell, ast_if->else_part);
+	}
+
+	return rc;
+}
+
 static int exec_compound_cmd_list(struct Shell* shell, CompoundCommandsList* cmd_list)
 {
-	printf("Compount commands execution is not implemented yet\n");
-	return 0;
+	int rc = 0;
+
+	for (struct Node* node = cmd_list->head; node; node = node->next)
+	{
+		struct AstNode* ast_node = (struct AstNode*)node->data;
+
+		switch (ast_node->node_type)
+		{
+			case AST_WHILE:
+			{
+				rc = exec_while_loop(shell, (struct AstWhile*)ast_node->actual_data);
+			} break;
+			case AST_IF:
+			{
+				rc = exec_if(shell, (struct AstIf*)ast_node->actual_data);
+			} break;
+			case AST_FOR:
+			{
+				rc = exec_for_loop(shell ,(struct AstFor*)ast_node->actual_data);
+			} break;
+			default: break; // never executed
+		}
+
+		if (shell->execution_error->error)
+		{
+			break;
+		}
+	}
+
+	return rc;
 }
 
 static void exec_assignment(struct Shell* shell, struct AstAssignment* assignment)
@@ -229,12 +378,12 @@ static void exec_assignment(struct Shell* shell, struct AstAssignment* assignmen
 	}
 	else // assignment->node_type == AST_ARITHM_EXPR
 	{
-		char buffer[12]; // int is maximum 11 digits long
-		sprintf(buffer, "%d", execute_arithm_expr(shell, (struct AstArithmExpr*)assignment->expression->actual_data));
+		char* arithm_expr = expand_arithm_expr(shell, (struct AstArithmExpr*)assignment->expression->actual_data);
 
 		if (!shell->execution_error->error)
 		{
-			set_variable(shell, expand_token(shell, assignment->variable), buffer);
+			set_variable(shell, expand_token(shell, assignment->variable), arithm_expr);
+			free(arithm_expr);
 		}
 	}
 }
@@ -346,12 +495,9 @@ static char** create_cmd_args(struct Shell* shell, const char* cmd_name, Wordlis
 				struct AstWord* ast_word = (struct AstWord*)ast_node->actual_data;
 				argv[++indx] = copy_string(expand_token(shell, &ast_word->word));
 			}
-			else
+			else // ast_node->node_type == AST_ARITHM_EXPR
 			{
-				struct AstArithmExpr* arithm_expr = (struct AstArithmExpr*)ast_node->actual_data;
-
-				char buffer[12]; // int is maximum 11 digits long
-				sprintf(buffer, "%d", execute_arithm_expr(shell, arithm_expr));
+				char* arithm_expr = expand_arithm_expr(shell, (struct AstArithmExpr*)ast_node->actual_data);
 		
 				if (shell->execution_error->error)
 				{
@@ -359,7 +505,7 @@ static char** create_cmd_args(struct Shell* shell, const char* cmd_name, Wordlis
 					return NULL;
 				}
 
-				argv[++indx] = copy_string(buffer);
+				argv[++indx] = arithm_expr;
 			}
 		}
 	}
@@ -618,11 +764,6 @@ static int handle_error(struct Error* error, const char* prompt)
 
 int execute(struct Shell* shell, CommandsList* program)
 {
-	if (!handle_error(shell->parser->error, "Syntax error: "))
-	{
-		return 1;
-	}
-
 	if (program)
 	{
 		int rc = 0;
@@ -640,7 +781,7 @@ int execute(struct Shell* shell, CommandsList* program)
 				rc = exec_compound_cmd_list(shell, (CompoundCommandsList*)ast_node->actual_data);
 			}
 
-			if (!handle_error(shell->execution_error, "Error: "))
+			if (shell->execution_error->error)
 			{
 				return rc;
 			}
@@ -655,10 +796,16 @@ int execute(struct Shell* shell, CommandsList* program)
 int shell_execute(struct Shell* shell, char* buffer)
 {
 	initialize(shell, buffer);
-
 	shell->program = parse(shell->parser);
-	int rc = execute(shell, shell->program);
-	
+
+	int rc = 1;
+
+	if (handle_error(shell->parser->error, "Syntax error: "))
+	{
+		rc = execute(shell, shell->program);
+		handle_error(shell->execution_error, "Error: ");	
+	}
+
 	destroy_list(&shell->program);
 
 	return rc;
@@ -815,9 +962,8 @@ void execute_print(struct Shell* shell, CommandsList* program)
 											} break;
 											case AST_ARITHM_EXPR:
 											{
-												char str[12];
 												arithm_expr = expr->actual_data;
-												sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+												char* str = expand_arithm_expr(shell, arithm_expr);
 
 												if (!handle_error(shell->execution_error, "Error: "))
 												{
@@ -826,6 +972,7 @@ void execute_print(struct Shell* shell, CommandsList* program)
 
 												set_variable(shell, a->variable->word.buffer, str);
 												printf("Expression(Arithmetic expansion): %s\n", str);
+												free(str);
 											} break;
 											default: printf("error\n"); break;
 										}
@@ -955,9 +1102,7 @@ void execute_print(struct Shell* shell, CommandsList* program)
 											} break;
 											case AST_ARITHM_EXPR:
 											{
-												char str[12];
-												struct AstArithmExpr* arithm_expr = expr->actual_data;
-												sprintf(str, "%d", execute_arithm_expr(shell, arithm_expr));
+												char* str = expand_arithm_expr(shell, expr->actual_data);
 
 												if (shell->execution_error->error)
 												{
@@ -968,6 +1113,7 @@ void execute_print(struct Shell* shell, CommandsList* program)
 												printf("(Arithmetic expansion): %s\n", str);
 
 												set_variable(shell, ast_for->variable->word.word.buffer, str);
+												free(str);
 											} break;
 											default: break;
 										}
