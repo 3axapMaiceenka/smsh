@@ -25,6 +25,10 @@ int set_variable(struct Shell* shell, const char* var_name, const char* var_valu
 
 const char* get_variable(struct Shell* shell, const char* var_name);
 
+int shell_execute(struct Shell* shell, char* buffer);
+
+int shell_execute_from_file(struct Shell* shell, const char* filename);
+
 int execute(struct Shell* shell, CommandsList* program);
 
 void execute_print(struct Shell* shell, CommandsList* program);

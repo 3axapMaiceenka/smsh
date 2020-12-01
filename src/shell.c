@@ -642,7 +642,7 @@ int execute(struct Shell* shell, CommandsList* program)
 
 			if (!handle_error(shell->execution_error, "Error: "))
 			{
-				return 1;
+				return rc;
 			}
 		}
 
@@ -650,6 +650,83 @@ int execute(struct Shell* shell, CommandsList* program)
 	}
 
 	return 0;
+}
+
+int shell_execute(struct Shell* shell, char* buffer)
+{
+	initialize(shell, buffer);
+
+	shell->program = parse(shell->parser);
+	int rc = execute(shell, shell->program);
+	
+	destroy_list(&shell->program);
+
+	return rc;
+}
+
+int shell_execute_from_file(struct Shell* shell, const char* filename)
+{
+	int fd = open(filename, O_RDONLY);
+	if (fd == -1)
+	{
+		fprintf(stderr, "Failed to open %s\n", filename);
+		return 1;
+	}
+
+	// skip schebang
+	while (1)
+	{
+		char c;
+
+		ssize_t n = read(fd, &c, 1);
+		if (n != 1)
+		{
+			close(fd);
+			return 1;
+		}
+
+		if (c == ' ' || c == '\t' || c == '\n')
+		{
+			break;
+		}
+	}
+
+	off_t beg = lseek(fd, 0, SEEK_CUR);
+	if (beg == -1)
+	{
+		close(fd);
+		return 1;
+	}
+
+	off_t end = lseek(fd, 0, SEEK_END);
+	if (end == -1)
+	{
+		close(fd);
+		return 1;
+	}
+
+	if (lseek(fd, beg, SEEK_SET) == -1)
+	{
+		close(fd);
+		return 1;
+	}
+
+	size_t buf_size = (size_t)(end - beg + 1);
+	char* buffer = calloc(end - beg + 1, sizeof(char));
+
+	ssize_t n = read(fd, buffer, buf_size - 1);
+	if (n == -1)
+	{
+		close(fd);
+		return 1;
+	}
+
+	int rc = shell_execute(shell, buffer);
+
+	close(fd);
+	free(buffer);
+
+	return rc;
 }
 
 void execute_print(struct Shell* shell, CommandsList* program)
