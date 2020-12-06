@@ -1,5 +1,6 @@
 #include "shell.h"
 #include "utility.h"
+#include "builtin.h"
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -476,24 +477,18 @@ static void free_cmd_args(char** argv)
 	}
 }
 
-static char** create_cmd_args(struct Shell* shell, const char* cmd_name, Wordlist* command_args)
+static int wordlist_to_array(struct Shell* shell, char** array, Wordlist* wordlist, size_t indx)
 {
-	size_t argc = get_list_size(command_args) + 2;
-	char** argv = calloc(argc, sizeof(char*));
-	size_t indx = 0;
-
-	argv[0] = copy_string(cmd_name);
-
-	if (command_args)
+	if (wordlist)
 	{
-		for (struct Node* node = command_args->head; node; node = node->next)
+		for (struct Node* node = wordlist->head; node; node = node->next)
 		{
 			struct AstNode* ast_node = (struct AstNode*)node->data;
 
 			if (ast_node->node_type == AST_WORD)
 			{
 				struct AstWord* ast_word = (struct AstWord*)ast_node->actual_data;
-				argv[++indx] = copy_string(expand_token(shell, &ast_word->word));
+				array[indx++] = copy_string(expand_token(shell, &ast_word->word));
 			}
 			else // ast_node->node_type == AST_ARITHM_EXPR
 			{
@@ -501,13 +496,38 @@ static char** create_cmd_args(struct Shell* shell, const char* cmd_name, Wordlis
 		
 				if (shell->execution_error->error)
 				{
-					free_cmd_args(argv);
-					return NULL;
+					free_cmd_args(array);
+					return 0;
 				}
 
-				argv[++indx] = arithm_expr;
+				array[indx++] = arithm_expr;
 			}
 		}
+	}
+
+	return 1;
+}
+
+static char** create_builtin_args(struct Shell* shell, Wordlist* command_args)
+{
+	char** argv = calloc(get_list_size(command_args) + 1, sizeof(char*));
+
+	if (!wordlist_to_array(shell, argv, command_args, (size_t)0))
+	{
+		return NULL;
+	}
+
+	return argv;
+}
+
+static char** create_cmd_args(struct Shell* shell, const char* cmd_name, Wordlist* command_args)
+{
+	char** argv = calloc(get_list_size(command_args) + 2, sizeof(char*));
+	argv[0] = copy_string(cmd_name);
+
+	if (!wordlist_to_array(shell, argv, command_args, (size_t)1))
+	{
+		return NULL;
 	}
 
 	return argv;
@@ -629,6 +649,24 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 	if (simple_command->command_name)
 	{
 		const char* cmd_name = expand_token(shell, &simple_command->command_name->word);
+
+		const struct Builtin* const builtin = is_builtin(cmd_name);
+		if (builtin)
+		{
+			char** builtin_args = create_builtin_args(shell, simple_command->command_args);
+			int rc = 1;
+
+			if (!shell->execution_error->error)
+			{
+				rc = builtin->exec(shell, builtin_args);
+			}
+
+			close_fd_safely(infd);
+			close_fd_safely(outfd);
+			free_cmd_args(builtin_args);
+			return rc;
+		} 
+
 		char* path = find_executable(shell, cmd_name);	
 		if (!path)
 		{

@@ -1,4 +1,5 @@
 #include "shell.h"
+#include "utility.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <readline/readline.h>
@@ -14,18 +15,27 @@ int main(int argc, char** argv)
 	}
 	else
 	{
+		char* input = NULL;
+		char* prompt = NULL;
+
 		while (1) 
 		{
-			char* input = readline("$ ");
+			prompt = concat_strings(get_variable(shell, "PWD"), "$ ");
+			input = readline(prompt);
+
 			if (!input || !strcmp(input, "quit"))
 			{
-				free(input);
 			  	break;
 			}
 		
 			rc = shell_execute(shell, input);
+
 			free(input);
+			free(prompt);
 		}
+
+		free(input);
+		free(prompt);
 	}
 
 	stop(shell);

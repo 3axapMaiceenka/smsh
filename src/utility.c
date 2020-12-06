@@ -22,6 +22,7 @@ void unset_error(struct Error* error)
 {
 	error->error = 0;
 	free(error->error_message);
+	error->error_message = NULL;
 }
 
 void destroy_error(struct Error* error)
