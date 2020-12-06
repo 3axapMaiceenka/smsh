@@ -21,7 +21,7 @@ Description:
     - for loop
     - while loop
     - if/else statement
-  - Builrin commands
+  - Builtin commands
     - cd
     - export
     - unset
