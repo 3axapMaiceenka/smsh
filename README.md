@@ -21,4 +21,9 @@ Description:
     - for loop
     - while loop
     - if/else statement
+  - Builrin commands
+    - cd
+    - export
+    - unset
+    - help
 - [Grammar](https://github.com/3axapMaiceenka/smsh/blob/main/doc/grammar.txt)
