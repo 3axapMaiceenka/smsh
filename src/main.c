@@ -6,7 +6,13 @@
 
 int main(int argc, char** argv)
 {
-	struct Shell* shell = start();
+	struct Shell* shell = create();
+
+	if (!shell_init(shell))
+	{
+		return 1;
+	}
+
 	int rc = 0;
 
 	if (argc != 1)
@@ -23,7 +29,7 @@ int main(int argc, char** argv)
 			prompt = concat_strings(get_variable(shell, "PWD"), "$ ");
 			input = readline(prompt);
 
-			if (!input || !strcmp(input, "quit"))
+			if (!strcmp(input, "quit"))
 			{
 			  	break;
 			}
@@ -38,7 +44,7 @@ int main(int argc, char** argv)
 		free(prompt);
 	}
 
-	stop(shell);
+	destroy(shell);
 	
 	return rc;
 }

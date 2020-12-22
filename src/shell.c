@@ -2,6 +2,7 @@
 #include "utility.h"
 #include "builtin.h"
 #include <unistd.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -12,6 +13,37 @@
 #define IO_REDIRECT_ERROR_MES "can't execute I/O redirection"
 
 extern char** environ;
+
+int shell_init(struct Shell* shell)
+{
+	if (isatty(STDIN_FILENO))
+	{
+		while ((shell->pgid = getpgrp()) != tcgetpgrp(STDIN_FILENO)) // wait, while isn't in the foreground
+		{
+			kill(-shell->pgid, SIGTTIN);
+		}
+
+		signal(SIGINT, SIG_IGN);
+		signal(SIGQUIT, SIG_IGN);
+		signal(SIGTSTP, SIG_IGN);
+		signal(SIGTTIN, SIG_IGN);
+		signal(SIGTTOU, SIG_IGN);	
+
+		shell->pgid = getpid();
+
+		if (setpgid(shell->pgid, shell->pgid) < 0)
+		{
+			fprintf(stderr, "Can't put shell in process group\n");
+			return 0;
+		}
+
+		tcsetpgrp(STDIN_FILENO, shell->pgid);
+
+		return 1;
+	}
+
+	return 0;
+}
 
 static void init_from_env(struct Shell* shell)
 {
@@ -39,7 +71,7 @@ static void init_from_env(struct Shell* shell)
 	free(buf);
 }
 
-struct Shell* start()
+struct Shell* create()
 {
 	struct Shell* shell = calloc(1, sizeof(struct Shell));
 	shell->parser = calloc(1, sizeof(struct Parser));
@@ -55,7 +87,7 @@ struct Shell* start()
 	return shell;
 }
 
-void stop(struct Shell* shell)
+void destroy(struct Shell* shell)
 {
 	if (shell)
 	{
@@ -70,7 +102,7 @@ void stop(struct Shell* shell)
 	}
 }
 
-void initialize(struct Shell* shell, char* buffer)
+void init_parser(struct Shell* shell, char* buffer)
 {
 	shell->scanner->buffer = buffer;
 	shell->scanner->position = 0;
@@ -319,9 +351,15 @@ static int exec_if(struct Shell* shell, struct AstIf* ast_if)
 {
 	int rc = execute(shell, ast_if->condition);
 
+	printf("Condition exit code: %d", rc);
+
 	if (!rc)
 	{
+		printf("Exectue body\n\n");
+
 		rc = execute(shell, ast_if->if_part);
+
+		printf("Body exit code: %d\n", rc);
 	}
 	else
 	{
@@ -411,7 +449,23 @@ static void close_fd_safely(int fd)
 	}
 }
 
-static int start_process(const char* cmd_name, char** cmd_args, int infd, int outfd, int wait)
+// puts pid in process group id and gives in control over the terminal if foregorund is set 
+static void put_in_pg(pid_t pid, pid_t* pgid, int foreground)
+{
+	if (!*pgid)
+	{
+		*pgid = pid;
+	}
+	
+	setpgid(pid, *pgid);
+
+	if (foreground)
+	{
+		tcsetpgrp(STDIN_FILENO, *pgid);
+	}
+}
+
+static int start_process(const char* cmd_name, char** cmd_args, int infd, int outfd, pid_t* pgid, int foreground, int wait)
 {
 	pid_t pid = fork();
 
@@ -433,6 +487,14 @@ static int start_process(const char* cmd_name, char** cmd_args, int infd, int ou
 			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
 		}
 
+	 	put_in_pg(getpid(), pgid, foreground); // puts new process id in process group id and gives in control over the terminal if foregorund is set 
+		
+		signal(SIGINT, SIG_DFL);
+		signal(SIGQUIT, SIG_DFL);
+		signal(SIGTSTP, SIG_DFL);
+		signal(SIGTTIN, SIG_DFL);
+		signal(SIGTTOU, SIG_DFL);
+
 		if (execv(cmd_name, cmd_args) == -1)
 		{
 			return 127; // If a command is not found, the exit status shall be 127
@@ -440,24 +502,26 @@ static int start_process(const char* cmd_name, char** cmd_args, int infd, int ou
 	}
 	else
 	{
+		put_in_pg(pid, pgid, foreground); // to avoid race conditions
+	
 		if (wait)
 		{
 			int status;
-
+	
 			do
 			{
 				waitpid(pid, &status, WUNTRACED);
-
+	
 				if (WIFEXITED(status))
 				{
 					return WEXITSTATUS(status);
 				}
-
+	
 				if (WIFSIGNALED(status))
 				{
-					return 129; //  The exit status of a command that terminated because it received a signal shall be reported as greater than 128
+					return 129; // The exit status of a command that terminated because it received a signal shall be reported as greater than 128
 				}
-			} while (!WIFEXITED(status) && !WIFSIGNALED(status));
+			} while (!WIFEXITED(status) && !WIFSTOPPED(status)); 
 		}
 	}
 
@@ -634,7 +698,7 @@ static int redirect_io(struct Shell* shell, struct AstIORedirect* ast_io_redir, 
 	return 0;
 }
 
-static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* simple_command, int infd, int outfd, int wait)
+static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* simple_command, int infd, int outfd, pid_t* pgid, int foreground, int wait)
 {	
 	if (simple_command->assignment_list)
 	{
@@ -696,7 +760,7 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 			free(path);
 		}
 
-		int rc = start_process(path, cmd_args, infd, outfd, wait);		
+		int rc = start_process(path, cmd_args, infd, outfd, pgid, foreground, wait);		
 
 		switch (rc)
 		{
@@ -708,7 +772,7 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 			{
 				handle_unexisting_cmd_error(shell, path);
 			} break;
-			default: break; // child process terminated or was killed by a signal
+			default: break; 
 		}
 
 		close_fd_safely(infd);
@@ -724,12 +788,13 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 
 static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 {
-	//TODO: add waiting for all pipeline's commands to terminate
 	if (pipeline) 
 	{
-		int wait = 0;
 		int rc = 0;
+		int wait = 0;
 		int pipefd[2] = { 0, 1 };
+		int foreground = pipeline->mode == FOREGROUND ? 1 : 0;
+		pid_t pgid = 0;
 
 		for (struct Node* node = pipeline->pipeline->head; node; node = node->next)
 		{
@@ -742,7 +807,7 @@ static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 			else
 			{
 				// If the pipeline is not in the background, the shell shall wait for the last command specified in the pipeline to complete
-				if (pipeline->mode == FOREGROUND) 
+				if (foreground) 
 				{
 					wait = 1;
 				}
@@ -750,13 +815,15 @@ static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 				pipefd[1] = 1;
 			}
 
-			rc = exec_simple_command(shell, (struct AstSimpleCommand*)node->data, infd, pipefd[1], wait); // fds are closed
+			rc = exec_simple_command(shell, (struct AstSimpleCommand*)node->data, infd, pipefd[1], &pgid, foreground, wait); // fds are closed
 
 			if (shell->execution_error->error)
 			{
 				break;
 			}
 		}
+	
+		tcsetpgrp(STDIN_FILENO, shell->pgid); // regain control of terminal
 
 		return rc; // the exit status shall be the exit status of the last command specified in the pipeline
 	}
@@ -833,7 +900,7 @@ int execute(struct Shell* shell, CommandsList* program)
 
 int shell_execute(struct Shell* shell, char* buffer)
 {
-	initialize(shell, buffer);
+	init_parser(shell, buffer);
 	shell->program = parse(shell->parser);
 
 	int rc = 1;

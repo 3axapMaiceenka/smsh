@@ -138,7 +138,6 @@ static int cd(struct Shell* shell, char** argv)
 		}
 		else
 		{
-
 			const size_t dir_len = strlen(directory);
 			const char* _cdpath = strchr(cdpath, ':');
 			const char* prev = cdpath;

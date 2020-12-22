@@ -13,13 +13,16 @@ struct Shell
 	struct Hashtable* variables;
 	struct Error* execution_error;
 	CommandsList* program;
+	pid_t pgid;
 };
 
-struct Shell* start();
+struct Shell* create();
 
-void stop(struct Shell* shell);
+int shell_init(struct Shell* shell);
 
-void initialize(struct Shell* shell, char* buffer);
+void destroy(struct Shell* shell);
+
+void init_parser(struct Shell* shell, char* buffer);
 
 int set_variable(struct Shell* shell, const char* var_name, const char* var_value); // returns 1 if the variable already exists
 
