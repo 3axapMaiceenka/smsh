@@ -3,13 +3,12 @@
 #include "builtin.h"
 #include <unistd.h>
 #include <signal.h>
-#include <sys/wait.h>
-#include <sys/types.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#define DEFAULT_HASHTABLE_SIZE 128
 #define IO_REDIRECT_ERROR_MES "can't execute I/O redirection"
 
 extern char** environ;
@@ -78,6 +77,7 @@ struct Shell* create()
 	shell->scanner = calloc(1, sizeof(struct Scanner));
 	shell->execution_error = calloc(1, sizeof(struct Error));
 	shell->variables = create_hashtable(DEFAULT_HASHTABLE_SIZE);
+	shell->jobs = create_list(destroy_job);
 
 	shell->parser->scanner = shell->scanner;
 	shell->parser->error = calloc(1, sizeof(struct Error));
@@ -98,6 +98,7 @@ void destroy(struct Shell* shell)
 		free(shell->scanner);
 
 		destroy_list(&shell->program);
+		destroy_list(&shell->jobs);
 		destroy_hashtable(&shell->variables);
 	}
 }
@@ -465,7 +466,7 @@ static void put_in_pg(pid_t pid, pid_t* pgid, int foreground)
 	}
 }
 
-static int start_process(const char* cmd_name, char** cmd_args, int infd, int outfd, pid_t* pgid, int foreground, int wait)
+static int start_process(const char* cmd_name, struct Job* job, struct Process* process, int infd, int outfd, int foreground)
 {
 	pid_t pid = fork();
 
@@ -487,7 +488,7 @@ static int start_process(const char* cmd_name, char** cmd_args, int infd, int ou
 			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
 		}
 
-	 	put_in_pg(getpid(), pgid, foreground); // puts new process id in process group id and gives in control over the terminal if foregorund is set 
+	 	put_in_pg(getpid(), &job->pgid, foreground); // to avoid race conditions 
 		
 		signal(SIGINT, SIG_DFL);
 		signal(SIGQUIT, SIG_DFL);
@@ -495,50 +496,18 @@ static int start_process(const char* cmd_name, char** cmd_args, int infd, int ou
 		signal(SIGTTIN, SIG_DFL);
 		signal(SIGTTOU, SIG_DFL);
 
-		if (execv(cmd_name, cmd_args) == -1)
+		if (execv(cmd_name, process->argv) == -1)
 		{
 			return 127; // If a command is not found, the exit status shall be 127
 		}
 	}
 	else
 	{
-		put_in_pg(pid, pgid, foreground); // to avoid race conditions
-	
-		if (wait)
-		{
-			int status;
-	
-			do
-			{
-				waitpid(pid, &status, WUNTRACED);
-	
-				if (WIFEXITED(status))
-				{
-					return WEXITSTATUS(status);
-				}
-	
-				if (WIFSIGNALED(status))
-				{
-					return 129; // The exit status of a command that terminated because it received a signal shall be reported as greater than 128
-				}
-			} while (!WIFEXITED(status) && !WIFSTOPPED(status)); 
-		}
+		put_in_pg(pid, &job->pgid, foreground); // puts new process id in process group id and gives in control over the terminal if foregorund is set 
+		process->pid = pid;
 	}
 
 	return 0;
-}
-
-static void free_cmd_args(char** argv)
-{
-	if (argv)
-	{
-		for (char** ptr = argv; *ptr; ptr++)
-		{
-			free(*ptr);
-		}
-	
-		free(argv);
-	}
 }
 
 static int wordlist_to_array(struct Shell* shell, char** array, Wordlist* wordlist, size_t indx)
@@ -698,7 +667,7 @@ static int redirect_io(struct Shell* shell, struct AstIORedirect* ast_io_redir, 
 	return 0;
 }
 
-static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* simple_command, int infd, int outfd, pid_t* pgid, int foreground, int wait)
+static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* simple_command, struct Job* job, int infd, int outfd, int foreground)
 {	
 	if (simple_command->assignment_list)
 	{
@@ -714,21 +683,26 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 	{
 		const char* cmd_name = expand_token(shell, &simple_command->command_name->word);
 
+		struct Process* process = calloc(1, sizeof(struct Process));
+		process->completed = 1;
+		process->rc = 1;
+
 		const struct Builtin* const builtin = is_builtin(cmd_name);
 		if (builtin)
 		{
-			char** builtin_args = create_builtin_args(shell, simple_command->command_args);
-			int rc = 1;
+			process->argv = create_builtin_args(shell, simple_command->command_args);
 
 			if (!shell->execution_error->error)
 			{
-				rc = builtin->exec(shell, builtin_args);
+				process->rc = builtin->exec(shell, process->argv);
 			}
 
 			close_fd_safely(infd);
 			close_fd_safely(outfd);
-			free_cmd_args(builtin_args);
-			return rc;
+
+			push_back(job->processes, process);
+
+			return process->rc;
 		} 
 
 		char* path = find_executable(shell, cmd_name);	
@@ -737,50 +711,49 @@ static int exec_simple_command(struct Shell* shell, struct AstSimpleCommand* sim
 			handle_unexisting_cmd_error(shell, cmd_name);
 			close_fd_safely(infd);
 			close_fd_safely(outfd);
+			destroy_process(process);
 			return 127;
 		}
 
-		char** cmd_args = create_cmd_args(shell, path, simple_command->command_args);
+		process->argv = create_cmd_args(shell, path, simple_command->command_args);
 		if (shell->execution_error->error)
 		{
 			close_fd_safely(infd);
 			close_fd_safely(outfd);
+			destroy_process(process);
 			return 1; // If a command fails during word expansion or redirection, its exit status shall be greater than zero
 		}
 
 		if (redirect_io(shell, simple_command->input_redirect, &infd, outfd) == -1)
 		{
-			free_cmd_args(cmd_args);
 			free(path);
+			destroy_process(process);
+			return 1;
 		}
 
 		if (redirect_io(shell, simple_command->output_redirect, &outfd, infd) == -1)
 		{
-			free_cmd_args(cmd_args);
 			free(path);
+			destroy_process(process);
+			return 1;
 		}
 
-		int rc = start_process(path, cmd_args, infd, outfd, pgid, foreground, wait);		
+		process->rc = start_process(path, job, process, infd, outfd, foreground);
 
-		switch (rc)
+		if (process->rc == -1)
 		{
-			case -1: // fork() failed
-			{
-				set_error(shell->execution_error, "can't create a child process");
-			} break;
-			case 127: // execv() failed
-			{
-				handle_unexisting_cmd_error(shell, path);
-			} break;
-			default: break; 
+			set_error(shell->execution_error, "can't create a child process");
+		}
+		else
+		{
+			process->completed = 0;
 		}
 
 		close_fd_safely(infd);
 		close_fd_safely(outfd);
-		free_cmd_args(cmd_args);
 		free(path);
 
-		return rc;
+		push_back(job->processes, process);
 	}
 
 	return 0;
@@ -790,11 +763,12 @@ static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 {
 	if (pipeline) 
 	{
+		struct Job* job = calloc(1, sizeof(struct Job));
+		job->processes = create_list(destroy_process);
+
 		int rc = 0;
-		int wait = 0;
 		int pipefd[2] = { 0, 1 };
 		int foreground = pipeline->mode == FOREGROUND ? 1 : 0;
-		pid_t pgid = 0;
 
 		for (struct Node* node = pipeline->pipeline->head; node; node = node->next)
 		{
@@ -806,24 +780,38 @@ static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 			}
 			else
 			{
-				// If the pipeline is not in the background, the shell shall wait for the last command specified in the pipeline to complete
-				if (foreground) 
-				{
-					wait = 1;
-				}
-
 				pipefd[1] = 1;
 			}
 
-			rc = exec_simple_command(shell, (struct AstSimpleCommand*)node->data, infd, pipefd[1], &pgid, foreground, wait); // fds are closed
+			rc = exec_simple_command(shell, (struct AstSimpleCommand*)node->data, job, infd, pipefd[1], foreground); // fds are closed
 
 			if (shell->execution_error->error)
 			{
 				break;
 			}
 		}
-	
-		tcsetpgrp(STDIN_FILENO, shell->pgid); // regain control of terminal
+
+		if (!shell->execution_error->error || get_list_size(job->processes))
+		{
+			push_forward(shell->jobs, job);
+
+			if (foreground)
+			{ 
+				wait_for_job(shell->jobs, job);
+				tcsetpgrp(STDIN_FILENO, shell->pgid); // regain control of terminal
+
+				if (is_job_completed(job))
+				{
+					struct Process* process = (struct Process*)job->processes->tail->data;
+					rc = process->rc;
+					remove_node(shell->jobs, job);
+				}
+			}
+		}
+		else
+		{
+			destroy_job(job);
+		}
 
 		return rc; // the exit status shall be the exit status of the last command specified in the pipeline
 	}

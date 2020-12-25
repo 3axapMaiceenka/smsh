@@ -5,7 +5,7 @@ INCLUDES=-I include
 SRCDIR=src
 BINDIR=build
 OBJDIR=$(BINDIR)/obj
-SOURCES=main.c parser.c list.c utility.c shell.c hashtable.c scanner.c builtin.c
+SOURCES=main.c parser.c list.c utility.c shell.c hashtable.c scanner.c builtin.c job.c
 OBJECTS=$(addprefix $(OBJDIR)/, $(SOURCES:.c=.o))
 EXECUTABLE=$(BINDIR)/smsh.exe
 

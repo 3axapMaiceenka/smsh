@@ -1,4 +1,5 @@
 #include "shell.h"
+#include "job.h"
 #include "utility.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -38,6 +39,8 @@ int main(int argc, char** argv)
 
 			free(input);
 			free(prompt);
+
+			do_job_notification(shell->jobs);
 		}
 
 		free(input);
