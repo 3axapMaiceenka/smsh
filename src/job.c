@@ -184,6 +184,51 @@ void do_job_notification(Jobs* jobs)
 	}
 }
 
+void mark_job_as_running(struct Job* job)
+{
+	for (struct Node* node = job->processes->head; node; node = node->next)
+	{
+		struct Process* process = (struct Process*)node->data;
+		process->stopped = 0;
+	}
+
+	job->notified = 0;
+}
+
+void continue_job(pid_t init_pgid, Jobs* jobs, struct Job* job, int foreground)
+{
+	mark_job_as_running(job);
+
+	if (foreground)
+	{
+		put_job_in_foreground(init_pgid, jobs, job);
+	}
+	else
+	{
+		put_job_in_background(job);
+	}
+}
+
+void put_job_in_foreground(pid_t init_pgid, Jobs* jobs, struct Job* job)
+{
+	tcsetpgrp(STDIN_FILENO, job->pgid);
+	kill(-job->pgid, SIGCONT);
+
+	wait_for_job(jobs, job);
+
+	tcsetpgrp(STDIN_FILENO, init_pgid);
+
+	if (is_job_completed(job))
+	{
+		remove_node(jobs, job);
+	}
+}
+
+void put_job_in_background(struct Job* job)
+{
+	kill(-job->pgid, SIGCONT);
+}
+
 void free_cmd_args(char** argv)
 {
 	if (argv)

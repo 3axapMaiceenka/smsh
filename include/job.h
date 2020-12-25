@@ -32,6 +32,12 @@ void destroy_job(void* job);
 void destroy_process(void* process);
 void wait_for_job(Jobs* jobs, struct Job* job);
 void do_job_notification(Jobs* jobs);
+
+void mark_job_as_running(struct Job* job);
+void continue_job(pid_t init_pgid, Jobs* jobs, struct Job* job, int foreground);
+void put_job_in_foreground(pid_t init_pgid, Jobs* jobs, struct Job* job);
+void put_job_in_background(struct Job* job);
+
 void free_cmd_args(char** argv);
 
 #endif
