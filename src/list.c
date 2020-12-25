@@ -13,7 +13,6 @@ void push_back(struct List* list, void* data)
 {
 	struct Node* last = calloc(1, sizeof(struct Node));
 	last->data = data;
-	last->prev = list->tail;
 
 	if (!list->head)
 	{
@@ -21,8 +20,25 @@ void push_back(struct List* list, void* data)
 		return;
 	}
 
+	last->prev = list->tail;
 	list->tail->next = last;
 	list->tail = last;
+}
+
+void push_forward(struct List* list, void* data)
+{
+	struct Node* first = calloc(1, sizeof(struct Node));
+	first->data = data;
+
+	if (!list->head)
+	{
+		list->head = list->tail = first;
+		return;
+	}
+
+	first->next = list->head;
+	list->head->prev = first;
+	list->head = first;
 }
 
 static struct Node* find(struct List* list, void* data)
