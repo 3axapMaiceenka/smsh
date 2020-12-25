@@ -1,5 +1,6 @@
 #include "builtin.h"
 #include "utility.h"
+#include "job.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -20,11 +21,19 @@ static int unset(struct Shell* shell, char** argv);
 // help [bulitin_name]
 static int help(struct Shell* shell, char** argv);
 
+// bg
+static int bg(struct Shell* shell, char** argv);
+
+// fg
+static int fg(struct Shell* shell, char** argv);
+
 static const struct Builtin Builtins[] = 
 {
 	{ "cd", cd }, 
 	{ "export", export }, // add environment variable
 	{ "unset", unset }, // remove environment variable
+	{ "fg", fg }, // put job in foreground
+	{ "bg", bg }, // put job in background
 	{ "help", help }
 };
 
@@ -353,6 +362,46 @@ static int unset(struct Shell* shell, char** argv)
 	return 0;
 }
 
+// bg
+static int bg(struct Shell* shell, char** argv)
+{
+	if (*argv)
+	{
+		fprintf(stderr, "bg: too many arguments\n");
+		return 1;
+	}
+
+	if (!shell->jobs->head)
+	{
+		fprintf(stderr, "bg: no suitable job\n");
+		return 1;
+	}
+
+	continue_job(shell->pgid, shell->jobs, (struct Job*)shell->jobs->head->data, 0);
+
+	return 0;
+}
+
+// fg
+static int fg(struct Shell* shell, char** argv)
+{
+	if (*argv)
+	{
+		fprintf(stderr, "fg: too many arguments\n");
+		return 1;
+	}
+
+	if (!shell->jobs->head)
+	{
+		fprintf(stderr, "fg: no suitable job\n");
+		return 1;
+	}
+
+	continue_job(shell->pgid, shell->jobs, (struct Job*)shell->jobs->head->data, 1);
+
+	return 0;
+}
+
 // help [bulitin_name]
 static int help(struct Shell* shell, char** argv)
 {
@@ -390,12 +439,24 @@ static int help(struct Shell* shell, char** argv)
 			return 0;
 		}
 
+		if (!strcmp(builtin_name, "bg"))
+		{
+			fprintf(stdout, "bg: bg\nPuts last job in background\n");
+			return 0;
+		}
+
+		if (!strcmp(builtin_name, "fg"))
+		{
+			fprintf(stdout, "fg: fg\nPuts last job in foreground\n");
+			return 0;
+		}
+
 		fprintf(stderr, "help: no help topics match '%s'\n", builtin_name);
 		return 1;
 	}
 	else
 	{
-		fprintf(stdout, "Shell commands defined internally:\nhelp [builtin_name]\ncd: cd [-L |-P] [directory]\nexport [name] [value]\nunset [name]\n");
+		fprintf(stdout, "Shell commands defined internally:\nhelp [builtin_name]\ncd: cd [-L |-P] [directory]\nexport [name] [value]\nunset [name]\nbg\nfg\n");
 		return 0;
 	}
 }
