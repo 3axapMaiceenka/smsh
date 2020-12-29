@@ -26,4 +26,6 @@ Description:
     - export
     - unset
     - help
+    - bg
+    - fg
 - [Grammar](https://github.com/3axapMaiceenka/smsh/blob/main/doc/grammar.txt)
