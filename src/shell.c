@@ -352,15 +352,9 @@ static int exec_if(struct Shell* shell, struct AstIf* ast_if)
 {
 	int rc = execute(shell, ast_if->condition);
 
-	printf("Condition exit code: %d", rc);
-
 	if (!rc)
 	{
-		printf("Exectue body\n\n");
-
 		rc = execute(shell, ast_if->if_part);
-
-		printf("Body exit code: %d\n", rc);
 	}
 	else
 	{
