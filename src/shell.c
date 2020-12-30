@@ -785,7 +785,7 @@ static int exec_pipeline(struct Shell* shell, struct AstPipeline* pipeline)
 			}
 		}
 
-		if (!shell->execution_error->error || get_list_size(job->processes))
+		if (!shell->execution_error->error && get_list_size(job->processes))
 		{
 			push_forward(shell->jobs, job);
 
